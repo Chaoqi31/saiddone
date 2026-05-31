@@ -213,6 +213,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         guard activeMode != nil else { return }
         _ = capture.stop()
         capture.onLevel = nil
+        if config.muteAudioWhileRecording { SystemAudio.setMuted(false) }
         overlay.hide()
         activeMode = nil
         slog("recording cancelled")
@@ -261,6 +262,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             let label: String = { if case .translation = mode { return "Translating" } else { return "Recording" } }()
             overlay.show(label: label)
             if config.soundsEnabled { SoundFx.start() }
+            if config.muteAudioWhileRecording { SystemAudio.setMuted(true) }
             slog("recording started")
             refreshUI()
         } catch {
@@ -294,6 +296,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         guard let mode = activeMode else { return }
         let audio = capture.stop()
         capture.onLevel = nil
+        if config.muteAudioWhileRecording { SystemAudio.setMuted(false) }
         overlay.showProcessing()
         activeMode = nil
         isWorking = true

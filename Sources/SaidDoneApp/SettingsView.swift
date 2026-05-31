@@ -108,6 +108,7 @@ struct SettingsView: View {
             Toggle("Launch at login", isOn: $model.config.launchAtLogin)
             Toggle("Keep result on clipboard (auto-copy)", isOn: $model.config.autoCopyToClipboard)
             Toggle("Recording sounds", isOn: $model.config.soundsEnabled)
+            Toggle("Mute system audio while recording", isOn: $model.config.muteAudioWhileRecording)
             Divider()
             HStack {
                 Button("Export Settings…") { model.export() }
@@ -151,6 +152,10 @@ struct SettingsView: View {
                 SecureField("API key", text: $model.config.cloud.asrKey)
                 TextField("Base URL", text: $model.config.cloud.asrBaseURL)
                 TextField("Model", text: $model.config.cloud.asrModel)
+            }
+            Section("Proxy (optional, for cloud calls)") {
+                TextField("Host", text: $model.config.cloud.proxyHost)
+                TextField("Port", value: $model.config.cloud.proxyPort, format: .number)
             }
         }.padding()
     }

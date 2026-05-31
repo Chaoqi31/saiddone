@@ -11,8 +11,24 @@ public enum ProviderFactory {
             return WhisperKitASRProvider()
         case .cloud:
             let url = URL(string: config.cloud.asrBaseURL) ?? URL(string: "https://api.openai.com/v1")!
-            return CloudASRProvider(apiKey: config.cloud.asrKey, baseURL: url, model: config.cloud.asrModel)
+            return CloudASRProvider(apiKey: config.cloud.asrKey, baseURL: url, model: config.cloud.asrModel,
+                                    session: session(config.cloud))
         }
+    }
+
+    /// URLSession honoring an optional HTTP(S) proxy from config (helps behind restrictive networks).
+    private static func session(_ cloud: CloudConfig) -> URLSession {
+        guard !cloud.proxyHost.isEmpty, cloud.proxyPort > 0 else { return .shared }
+        let c = URLSessionConfiguration.default
+        c.connectionProxyDictionary = [
+            kCFNetworkProxiesHTTPEnable as String: 1,
+            kCFNetworkProxiesHTTPProxy as String: cloud.proxyHost,
+            kCFNetworkProxiesHTTPPort as String: cloud.proxyPort,
+            kCFNetworkProxiesHTTPSEnable as String: 1,
+            kCFNetworkProxiesHTTPSProxy as String: cloud.proxyHost,
+            kCFNetworkProxiesHTTPSPort as String: cloud.proxyPort,
+        ]
+        return URLSession(configuration: c)
     }
 
     public static func makeLLM(_ config: AppConfig) -> LLMProvider {
@@ -25,7 +41,8 @@ public enum ProviderFactory {
             return RuleBasedLLM()
         case .cloud:
             let url = URL(string: config.cloud.llmBaseURL) ?? URL(string: "https://api.openai.com/v1")!
-            return CloudLLMProvider(apiKey: config.cloud.llmKey, baseURL: url, model: config.cloud.llmModel)
+            return CloudLLMProvider(apiKey: config.cloud.llmKey, baseURL: url, model: config.cloud.llmModel,
+                                    session: session(config.cloud))
         }
     }
 }

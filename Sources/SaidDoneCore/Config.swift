@@ -28,6 +28,9 @@ public struct CloudConfig: Codable, Sendable, Equatable {
     public var asrKey: String = ""
     public var asrBaseURL: String = "https://api.openai.com/v1"
     public var asrModel: String = "whisper-1"
+    /// Optional HTTP proxy for cloud calls (helps when behind a restrictive network). Empty = none.
+    public var proxyHost: String = ""
+    public var proxyPort: Int = 0
     public init() {}
 }
 
@@ -50,6 +53,8 @@ public struct AppConfig: Codable, Sendable {
     public var autoCopyToClipboard: Bool
     /// Play a subtle sound on record start / result inserted.
     public var soundsEnabled: Bool
+    /// Mute system audio output while recording (so playing media doesn't bleed into the mic).
+    public var muteAudioWhileRecording: Bool
     /// Opt-in cloud endpoints (used when a provider's location is .cloud and a key is set).
     public var cloud: CloudConfig
     /// Personalization: the user's background/profession/jargon, fed to the Polish LLM (like
@@ -68,12 +73,14 @@ public struct AppConfig: Codable, Sendable {
         launchAtLogin: Bool = false,
         autoCopyToClipboard: Bool = false,
         soundsEnabled: Bool = true,
+        muteAudioWhileRecording: Bool = false,
         cloud: CloudConfig = .init(),
         userProfile: String = ""
     ) {
         self.launchAtLogin = launchAtLogin
         self.autoCopyToClipboard = autoCopyToClipboard
         self.soundsEnabled = soundsEnabled
+        self.muteAudioWhileRecording = muteAudioWhileRecording
         self.cloud = cloud
         self.userProfile = userProfile
         self.dictationHotkey = dictationHotkey
@@ -101,6 +108,7 @@ public struct AppConfig: Codable, Sendable {
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         autoCopyToClipboard = try c.decodeIfPresent(Bool.self, forKey: .autoCopyToClipboard) ?? false
         soundsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundsEnabled) ?? true
+        muteAudioWhileRecording = try c.decodeIfPresent(Bool.self, forKey: .muteAudioWhileRecording) ?? false
         cloud = try c.decodeIfPresent(CloudConfig.self, forKey: .cloud) ?? .init()
         userProfile = try c.decodeIfPresent(String.self, forKey: .userProfile) ?? ""
     }
