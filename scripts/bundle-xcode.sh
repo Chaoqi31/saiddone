@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Package a FULL-featured SaidDone.app via xcodebuild — includes MLX's compiled metallib so the
+# Qwen LLM (polish + translation) runs. Requires the Metal Toolchain
+# (xcodebuild -downloadComponent MetalToolchain). For the lightweight WhisperKit-only app, use bundle.sh.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+DD=/tmp/dd-saiddone
+APP="dist/SaidDone.app"
+PROD="$DD/Build/Products/Debug"
+
+echo "Building SaidDone via xcodebuild (compiles metallib)…"
+xcodebuild -scheme SaidDone -derivedDataPath "$DD" -destination 'platform=macOS,arch=arm64' build >/dev/null
+
+rm -rf "$APP"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+cp "$PROD/SaidDone" "$APP/Contents/MacOS/SaidDone"
+# SPM resource bundles (metallib, tokenizer Hub) must sit next to the executable for Bundle.module.
+for b in "$PROD"/*.bundle; do [ -e "$b" ] && cp -R "$b" "$APP/Contents/MacOS/"; done
+
+cat > "$APP/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>             <string>SaidDone</string>
+  <key>CFBundleDisplayName</key>      <string>SaidDone</string>
+  <key>CFBundleIdentifier</key>       <string>com.saiddone.app</string>
+  <key>CFBundleExecutable</key>       <string>SaidDone</string>
+  <key>CFBundlePackageType</key>      <string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.1.0</string>
+  <key>CFBundleVersion</key>          <string>1</string>
+  <key>LSMinimumSystemVersion</key>   <string>14.0</string>
+  <key>LSUIElement</key>              <true/>
+  <key>NSMicrophoneUsageDescription</key>
+  <string>SaidDone transcribes your speech on-device to type for you.</string>
+</dict>
+</plist>
+PLIST
+
+codesign --force --sign - --deep "$APP" 2>/dev/null || echo "warn: codesign skipped"
+echo "Built $APP (MLX-enabled)"
