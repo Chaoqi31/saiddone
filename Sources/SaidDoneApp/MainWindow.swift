@@ -10,7 +10,19 @@ final class HistoryModel: ObservableObject {
     @Published var search = ""
     let store: HistoryStore
     private var player: AVAudioPlayer?
+    /// Called with terms learned when the user edits an entry (wired to add them to the dictionary).
+    var onLearnTerms: (([DictionaryEntry]) -> Void)?
     init(store: HistoryStore) { self.store = store; refresh() }
+
+    /// Save an edited entry; auto-learns Latin-term corrections into the dictionary. Returns them.
+    @discardableResult
+    func saveEdit(_ e: HistoryEntry, newText: String) -> [DictionaryEntry] {
+        let terms = DictionaryLearning.diffTerms(old: e.text, new: newText)
+        var updated = e; updated.text = newText
+        store.update(updated); refresh()
+        if !terms.isEmpty { onLearnTerms?(terms) }
+        return terms
+    }
     func refresh() { entries = store.recent() }
     func clear() { store.clear(); refresh() }
     func delete(_ e: HistoryEntry) {
@@ -151,6 +163,9 @@ private struct HomePane: View {
 
 private struct HistoryPane: View {
     @ObservedObject var model: HistoryModel
+    @State private var editing: HistoryEntry?
+    @State private var draft = ""
+    @State private var learnedMsg: String?
 
     private var groups: [(String, [HistoryEntry])] {
         let cal = Calendar.current
@@ -188,6 +203,32 @@ private struct HistoryPane: View {
             }
         }
         .navigationTitle("History")
+        .sheet(item: $editing) { e in editSheet(e) }
+        .alert("Added to dictionary", isPresented: Binding(get: { learnedMsg != nil }, set: { if !$0 { learnedMsg = nil } })) {
+            Button("OK") { learnedMsg = nil }
+        } message: { Text(learnedMsg ?? "") }
+    }
+
+    private func editSheet(_ e: HistoryEntry) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Edit & learn").font(.headline)
+            Text("Fix any wrong words. English-term fixes are added to your dictionary so future dictations auto-correct.")
+                .font(.caption).foregroundStyle(.secondary)
+            TextEditor(text: $draft).font(.body).frame(minHeight: 120)
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
+            HStack {
+                Spacer()
+                Button("Cancel") { editing = nil }
+                Button("Save") {
+                    let terms = model.saveEdit(e, newText: draft)
+                    editing = nil
+                    if !terms.isEmpty {
+                        learnedMsg = terms.map { "\($0.wrong) → \($0.right)" }.joined(separator: ", ")
+                    }
+                }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20).frame(width: 460)
     }
 
     private func row(_ e: HistoryEntry) -> some View {
@@ -206,6 +247,8 @@ private struct HistoryPane: View {
                     Button { model.exportAudio(e) } label: { Image(systemName: "square.and.arrow.down") }
                         .buttonStyle(.borderless).help("Reveal audio in Finder")
                 }
+                Button { draft = e.text; editing = e } label: { Image(systemName: "pencil") }
+                    .buttonStyle(.borderless).help("Edit & learn term")
                 Button { copyToClipboard(e.text) } label: { Image(systemName: "doc.on.doc") }
                     .buttonStyle(.borderless).help("Copy")
             }

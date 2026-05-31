@@ -57,6 +57,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         setupStatusItem()
         overlay.model.onFinish = { [weak self] in self?.finishRecording() }
         overlay.model.onCancel = { [weak self] in self?.cancelRecording() }
+        historyModel.onLearnTerms = { [weak self] terms in self?.learnTerms(terms) }
         let n = registerHotkeys()
         slog("launched, \(n) hotkeys registered")
         Permissions.accessibilityTrusted(prompt: true)
@@ -122,6 +123,16 @@ final class AppController: NSObject, NSApplicationDelegate {
         win.center()
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Merge auto-learned correction terms into the dictionary (from a History edit).
+    private func learnTerms(_ terms: [DictionaryEntry]) {
+        var cfg = config
+        var byKey = Dictionary(cfg.dictionary.entries.map { ($0.wrong, $0) }) { a, _ in a }
+        for t in terms { byKey[t.wrong] = t }
+        cfg.dictionary.entries = byKey.values.sorted { $0.wrong < $1.wrong }
+        applyConfig(cfg)
+        slog("learned dictionary terms: \(terms.map { "\($0.wrong)->\($0.right)" }.joined(separator: ","))")
     }
 
     /// Persist edited config and rebuild providers so changes take effect immediately.

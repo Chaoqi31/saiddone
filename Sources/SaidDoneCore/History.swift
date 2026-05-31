@@ -61,6 +61,14 @@ public struct HistoryStore: Sendable {
 
     public func clear() { try? FileManager.default.removeItem(at: url) }
 
+    /// Replace one entry (rewrites the file).
+    public func update(_ entry: HistoryEntry) {
+        let all = recent(Int.max).reversed().map { $0.id == entry.id ? entry : $0 }
+        var data = Data()
+        for e in all { if let d = try? Self.encoder.encode(e) { data.append(d); data.append(0x0A) } }
+        try? data.write(to: url)
+    }
+
     /// Remove one entry by id (rewrites the file).
     public func remove(id: UUID) {
         let kept = recent(Int.max).reversed().filter { $0.id != id }   // back to chronological
