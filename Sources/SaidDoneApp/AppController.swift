@@ -288,7 +288,8 @@ final class AppController: NSObject, NSApplicationDelegate {
 
         // Resolve App Profile tone from the foreground app (where text will land).
         let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        let context = config.appProfiles.context(bundleID: bundleID, url: nil)
+        var context = config.appProfiles.context(bundleID: bundleID, url: nil)
+        context.userProfile = config.userProfile.isEmpty ? nil : config.userProfile
 
         let orch = PipelineOrchestrator(asr: asr, llm: llm, dictionary: config.dictionary)
         Task { @MainActor in

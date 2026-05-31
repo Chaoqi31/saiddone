@@ -1,8 +1,14 @@
 import Foundation
+import SaidDoneCore
 
 /// Shared system prompt for Polish (used by both cloud and local MLX LLMs so behaviour is consistent).
-func polishSystemPrompt(tone: String?) -> String {
-    (tone.map { "\($0) " } ?? "")
+func polishSystemPrompt(context: PolishContext) -> String {
+    var prefix = ""
+    if let profile = context.userProfile, !profile.isEmpty {
+        prefix += "【用户背景】\(profile)。请据此理解其专业术语、英文缩写和中英混说，保证术语准确、不要乱改或瞎翻译。\n"
+    }
+    if let tone = context.tonePrompt, !tone.isEmpty { prefix += "\(tone) " }
+    return prefix
         + "你是听写文本整理助手。规则："
         + "① 中文一律用简体；"
         + "② 加正确标点、合理断句；按语义分段换行，不要全部连成一长句；"

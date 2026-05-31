@@ -50,6 +50,9 @@ public struct AppConfig: Codable, Sendable {
     public var autoCopyToClipboard: Bool
     /// Opt-in cloud endpoints (used when a provider's location is .cloud and a key is set).
     public var cloud: CloudConfig
+    /// Personalization: the user's background/profession/jargon, fed to the Polish LLM (like
+    /// ChatGPT custom instructions) so it handles their terminology and code-switching well.
+    public var userProfile: String
 
     public init(
         dictationHotkey: Hotkey,
@@ -62,11 +65,13 @@ public struct AppConfig: Codable, Sendable {
         appProfiles: AppProfileStore = .init(),
         launchAtLogin: Bool = false,
         autoCopyToClipboard: Bool = false,
-        cloud: CloudConfig = .init()
+        cloud: CloudConfig = .init(),
+        userProfile: String = ""
     ) {
         self.launchAtLogin = launchAtLogin
         self.autoCopyToClipboard = autoCopyToClipboard
         self.cloud = cloud
+        self.userProfile = userProfile
         self.dictationHotkey = dictationHotkey
         self.translationHotkey = translationHotkey
         self.targetLanguage = targetLanguage
@@ -92,6 +97,7 @@ public struct AppConfig: Codable, Sendable {
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         autoCopyToClipboard = try c.decodeIfPresent(Bool.self, forKey: .autoCopyToClipboard) ?? false
         cloud = try c.decodeIfPresent(CloudConfig.self, forKey: .cloud) ?? .init()
+        userProfile = try c.decodeIfPresent(String.self, forKey: .userProfile) ?? ""
     }
 
     /// Zero-key local defaults (GOALS B4). Hotkeys: ⌃⌥D (dictation), ⌃⌥T (translation) — avoid

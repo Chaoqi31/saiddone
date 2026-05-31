@@ -21,7 +21,7 @@ public struct CloudLLMProvider: LLMProvider {
     }
 
     public func polish(_ text: String, context: PolishContext) async throws -> String {
-        return try await chat(system: polishSystemPrompt(tone: context.tonePrompt), user: text)
+        return try await chat(system: polishSystemPrompt(context: context), user: text)
     }
 
     public func translate(_ text: String, to targetLanguage: String, context: PolishContext) async throws -> String {

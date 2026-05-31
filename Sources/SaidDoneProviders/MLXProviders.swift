@@ -81,7 +81,7 @@ public actor MLXQwenLLMProvider: LLMProvider {
     }
 
     public func polish(_ text: String, context: PolishContext) async throws -> String {
-        let out = try await run(instructions: polishSystemPrompt(tone: context.tonePrompt), prompt: text)
+        let out = try await run(instructions: polishSystemPrompt(context: context), prompt: text)
         // Guard: a small LLM sometimes collapses the whole utterance to a fragment. If the output
         // is implausibly short vs input, treat as failure so the ladder falls back to RuleBasedLLM.
         if !text.isEmpty, out.count < max(4, text.count / 3) {

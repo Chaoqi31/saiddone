@@ -18,10 +18,15 @@ public protocol ASRProvider: Sendable {
 
 // MARK: - LLM
 
-/// Tone/style context for Polish, derived from the active App Profile (GOALS A5/A5′).
+/// Tone/style context for Polish: per-app tone (App Profile) + the user's personal background
+/// (their profession/jargon), so the LLM handles terminology and code-switching the way they do.
 public struct PolishContext: Sendable {
     public var tonePrompt: String?
-    public init(tonePrompt: String? = nil) { self.tonePrompt = tonePrompt }
+    public var userProfile: String?
+    public init(tonePrompt: String? = nil, userProfile: String? = nil) {
+        self.tonePrompt = tonePrompt
+        self.userProfile = userProfile
+    }
     public static let none = PolishContext()
 }
 
