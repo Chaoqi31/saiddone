@@ -34,6 +34,11 @@ final class AudioCapture: @unchecked Sendable {
         isRecording = true
     }
 
+    /// Copy of audio captured so far, without stopping — for live streaming preview.
+    func snapshot() -> AudioSamples {
+        AudioSamples(samples: lock.withLock { collected })
+    }
+
     /// Stop and return everything captured as 16 kHz mono.
     func stop() -> AudioSamples {
         guard isRecording else { return AudioSamples(samples: []) }
