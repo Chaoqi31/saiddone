@@ -27,6 +27,12 @@ let package = Package(
             name: "SaidDoneApp",
             dependencies: ["SaidDoneCore", "SaidDoneProviders"]
         ),
+        // Headless spike harness: load a WAV/AIFF, run ASR→polish→translate, print output + timing.
+        // Validates the real engines on-device without mic/GUI (Phase-0 spike).
+        .executableTarget(
+            name: "SaidDoneSpike",
+            dependencies: ["SaidDoneCore", "SaidDoneProviders"]
+        ),
         .testTarget(name: "SaidDoneCoreTests", dependencies: ["SaidDoneCore"]),
         .testTarget(name: "SaidDoneProvidersTests", dependencies: ["SaidDoneProviders"]),
     ]

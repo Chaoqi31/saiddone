@@ -24,6 +24,12 @@ final class RuleBasedLLMTests: XCTestCase {
         XCTAssertEqual(out, "Hello, world.")
     }
 
+    func testCleansOrphanPunctuationFromFillerRemoval() async throws {
+        // Real WhisperKit output that exposed the orphan-comma bug.
+        let out = try await llm.polish("Um, hello this, is a test of the dictation system, you know.", context: .none)
+        XCTAssertEqual(out, "Hello this, is a test of the dictation system.")
+    }
+
     func testTranslateThrows() async {
         do {
             _ = try await llm.translate("hi", to: "zh", context: .none)

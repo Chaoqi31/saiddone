@@ -19,6 +19,7 @@ public struct RuleBasedLLM: LLMProvider {
         t = Self.removeFillers(t)
         t = Self.collapseRepeats(t)
         t = Self.normalizeSpacing(t)
+        t = Self.cleanupPunctuation(t)
         t = Self.sentenceCaseAndPunctuate(t)
         return t
     }
@@ -53,6 +54,20 @@ public struct RuleBasedLLM: LLMProvider {
         var t = text.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         // No space before ASCII punctuation.
         t = t.replacingOccurrences(of: "\\s+([,.!?;:])", with: "$1", options: .regularExpression)
+        return t.trimmingCharacters(in: .whitespaces)
+    }
+
+    /// Repair punctuation orphaned by filler removal (e.g. "Um," → ", "; "you know." → " .").
+    static func cleanupPunctuation(_ text: String) -> String {
+        var t = text
+        func sub(_ pat: String, _ rep: String) {
+            t = t.replacingOccurrences(of: pat, with: rep, options: .regularExpression)
+        }
+        sub("\\s+([,.!?;:，。！？；：])", "$1")          // no space before punctuation
+        sub("([,;:，；：])\\s*([.。!！?？])", "$2")        // comma-then-terminator -> terminator (", ." -> ".")
+        sub("([,.!?;:，。！？])\\1+", "$1")              // collapse duplicate punctuation
+        sub("^[\\s,;:，；：、]+", "")                     // drop leading orphan punctuation/space
+        sub("\\s{2,}", " ")
         return t.trimmingCharacters(in: .whitespaces)
     }
 
