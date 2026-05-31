@@ -1,27 +1,23 @@
 import AppKit
 import SwiftUI
 
-/// Live state for the recording overlay.
+/// Live state + actions for the recording overlay.
 @MainActor
 final class OverlayModel: ObservableObject {
     @Published var level: Float = 0
-    @Published var levels: [Float] = Array(repeating: 0, count: 36)  // rolling waveform
+    @Published var levels: [Float] = Array(repeating: 0, count: 30)
     @Published var seconds: Int = 0
     @Published var label: String = "Recording"
+    @Published var processing = false
+    var onFinish: (() -> Void)?
+    var onCancel: (() -> Void)?
 
-    func pushLevel(_ v: Float) {
-        level = v
-        levels.removeFirst()
-        levels.append(v)
-    }
-    func reset() {
-        level = 0; seconds = 0
-        levels = Array(repeating: 0, count: 36)
-    }
+    func pushLevel(_ v: Float) { level = v; levels.removeFirst(); levels.append(v) }
+    func reset() { level = 0; seconds = 0; processing = false; levels = Array(repeating: 0, count: 30) }
 }
 
-/// Compact floating, non-activating overlay shown while recording: dot + label + timer + waveform.
-/// Bottom-center, click-through.
+/// Floating, click-through-except-buttons overlay: dot + waveform + timer + ✓/✕ while recording,
+/// spinner while the pipeline runs.
 @MainActor
 final class RecordingOverlay {
     let model = OverlayModel()
@@ -33,30 +29,35 @@ final class RecordingOverlay {
         model.reset()
         model.label = label
         startDate = Date()
-
         let panel = self.panel ?? makePanel()
         self.panel = panel
         reposition(panel)
         panel.orderFrontRegardless()
-
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
-                guard let self, let s = self.startDate else { return }
+                guard let self, let s = self.startDate, !self.model.processing else { return }
                 self.model.seconds = Int(Date().timeIntervalSince(s))
             }
         }
     }
 
+    /// Switch to the "processing" state (keep panel up with a spinner) after the user stops.
+    func showProcessing() {
+        timer?.invalidate(); timer = nil
+        model.processing = true
+    }
+
     func hide() {
         timer?.invalidate(); timer = nil
+        model.processing = false
         panel?.orderOut(nil)
     }
 
     func updateLevel(_ level: Float) { model.pushLevel(level) }
 
     private func makePanel() -> NSPanel {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 240, height: 56),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 56),
                             styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
         panel.level = .floating
         panel.isFloatingPanel = true
@@ -64,7 +65,7 @@ final class RecordingOverlay {
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = true
-        panel.ignoresMouseEvents = true
+        panel.ignoresMouseEvents = false   // buttons need clicks
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         panel.contentView = NSHostingView(rootView: OverlayView(model: model))
         return panel
@@ -82,23 +83,39 @@ private struct OverlayView: View {
     @ObservedObject var model: OverlayModel
 
     var body: some View {
-        HStack(spacing: 10) {
-            Circle().fill(.red).frame(width: 8, height: 8)
-                .opacity(model.seconds % 2 == 0 ? 1 : 0.35)
-            waveform.frame(width: 130, height: 24)
-            Spacer(minLength: 4)
-            Text(timeString).font(.system(size: 12, weight: .medium).monospacedDigit())
-                .foregroundStyle(.secondary)
+        Group {
+            if model.processing {
+                HStack(spacing: 10) {
+                    Image(systemName: "waveform").foregroundStyle(.purple)
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Processing…").font(.system(size: 12, weight: .medium))
+                        ProgressView().progressViewStyle(.linear).frame(width: 200)
+                    }
+                    Spacer(minLength: 0)
+                }
+            } else {
+                HStack(spacing: 9) {
+                    Circle().fill(.red).frame(width: 8, height: 8)
+                        .opacity(model.seconds % 2 == 0 ? 1 : 0.35)
+                    waveform.frame(width: 96, height: 22)
+                    Text(timeString).font(.system(size: 11, weight: .medium).monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 2)
+                    Button { model.onFinish?() } label: { Image(systemName: "checkmark") }
+                        .help("Finish & insert")
+                    Button { model.onCancel?() } label: { Image(systemName: "xmark") }
+                        .help("Cancel")
+                }
+                .buttonStyle(.bordered).controlSize(.small)
+            }
         }
-        .padding(.horizontal, 14).padding(.vertical, 0)
-        .frame(width: 240, height: 56)
+        .padding(.horizontal, 14)
+        .frame(width: 300, height: 56)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
     }
 
-    private var timeString: String {
-        String(format: "%d:%02d", model.seconds / 60, model.seconds % 60)
-    }
+    private var timeString: String { String(format: "%d:%02d", model.seconds / 60, model.seconds % 60) }
 
     private var waveform: some View {
         GeometryReader { geo in

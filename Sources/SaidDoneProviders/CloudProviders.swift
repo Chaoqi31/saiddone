@@ -104,7 +104,7 @@ public struct CloudASRProvider: ASRProvider {
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n".data(using: .utf8)!)
         body.append("Content-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
-        body.append(wavData(audio))
+        body.append(audio.wavData())
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
 
         let (data, response) = try await session.upload(for: req, from: body)
@@ -119,23 +119,3 @@ public struct CloudASRProvider: ASRProvider {
     }
 }
 
-/// Encode 16 kHz mono Float [-1,1] to 16-bit PCM WAV.
-func wavData(_ audio: AudioSamples) -> Data {
-    let sampleRate = Int(audio.sampleRate)
-    let samples = audio.samples
-    let bytesPerSample = 2
-    let dataSize = samples.count * bytesPerSample
-    var d = Data(capacity: 44 + dataSize)
-    func str(_ s: String) { d.append(s.data(using: .ascii)!) }
-    func u32(_ v: UInt32) { var x = v.littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
-    func u16(_ v: UInt16) { var x = v.littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
-    str("RIFF"); u32(UInt32(36 + dataSize)); str("WAVE")
-    str("fmt "); u32(16); u16(1); u16(1)
-    u32(UInt32(sampleRate)); u32(UInt32(sampleRate * bytesPerSample)); u16(UInt16(bytesPerSample)); u16(16)
-    str("data"); u32(UInt32(dataSize))
-    for s in samples {
-        let clamped = max(-1, min(1, s))
-        u16(UInt16(bitPattern: Int16(clamped * 32767)))
-    }
-    return d
-}

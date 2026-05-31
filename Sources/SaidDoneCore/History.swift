@@ -8,20 +8,30 @@ public struct HistoryEntry: Codable, Identifiable, Sendable, Equatable {
     public var mode: String       // "dictation" | "translation"
     public var raw: String        // ASR output
     public var text: String       // final inserted text
+    public var audioFile: String? // saved WAV filename in the history audio dir (nil = not saved)
 
-    public init(id: UUID = UUID(), date: Date, mode: String, raw: String, text: String) {
+    public init(id: UUID = UUID(), date: Date, mode: String, raw: String, text: String, audioFile: String? = nil) {
         self.id = id
         self.date = date
         self.mode = mode
         self.raw = raw
         self.text = text
+        self.audioFile = audioFile
     }
 }
 
 /// Append-only history at ~/Library/Application Support/SaidDone/history.jsonl.
 public struct HistoryStore: Sendable {
     public let url: URL
-    public init(directory: URL) { self.url = directory.appendingPathComponent("history.jsonl") }
+    public let directory: URL
+    public init(directory: URL) {
+        self.directory = directory
+        self.url = directory.appendingPathComponent("history.jsonl")
+    }
+
+    /// Directory holding saved per-entry WAV files.
+    public var audioDirectory: URL { directory.appendingPathComponent("audio", isDirectory: true) }
+    public func audioURL(_ filename: String) -> URL { audioDirectory.appendingPathComponent(filename) }
 
     private static let encoder = JSONEncoder()
     private static let decoder = JSONDecoder()

@@ -55,6 +55,8 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusItem()
+        overlay.model.onFinish = { [weak self] in self?.finishRecording() }
+        overlay.model.onCancel = { [weak self] in self?.cancelRecording() }
         let n = registerHotkeys()
         slog("launched, \(n) hotkeys registered")
         Permissions.accessibilityTrusted(prompt: true)
@@ -244,7 +246,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         guard let mode = activeMode else { return }
         let audio = capture.stop()
         capture.onLevel = nil
-        overlay.hide()
+        overlay.showProcessing()
         activeMode = nil
         isWorking = true
         slog("recording stopped, \(String(format: "%.1f", audio.duration))s audio, running pipeline…")
@@ -256,7 +258,7 @@ final class AppController: NSObject, NSApplicationDelegate {
 
         let orch = PipelineOrchestrator(asr: asr, llm: llm, dictionary: config.dictionary)
         Task { @MainActor in
-            defer { self.isWorking = false; self.refreshUI() }
+            defer { self.isWorking = false; self.overlay.hide(); self.refreshUI() }
             do {
                 let result = try await orch.run(audio, mode: mode, context: context,
                                                 languageHint: self.config.asrLanguage)
@@ -264,8 +266,15 @@ final class AppController: NSObject, NSApplicationDelegate {
                 slog("pipeline done -> '\(result.text)' (\(String(format: "%.2f", result.elapsed))s)")
                 // Save to history BEFORE inserting, so text is recoverable even if paste fails.
                 let modeStr: String = { if case .translation = mode { return "translation" } else { return "dictation" } }()
-                self.historyStore.append(HistoryEntry(date: Date(), mode: modeStr,
-                                                      raw: result.rawTranscript, text: result.text))
+                let id = UUID()
+                var audioFile: String? = nil
+                if !audio.samples.isEmpty {
+                    let name = "\(id).wav"
+                    try? FileManager.default.createDirectory(at: self.historyStore.audioDirectory, withIntermediateDirectories: true)
+                    if (try? audio.wavData().write(to: self.historyStore.audioURL(name))) != nil { audioFile = name }
+                }
+                self.historyStore.append(HistoryEntry(id: id, date: Date(), mode: modeStr,
+                                                      raw: result.rawTranscript, text: result.text, audioFile: audioFile))
                 self.historyModel.refresh()
                 InsertionService.insert(result.text, autoCopy: self.config.autoCopyToClipboard)
             } catch {

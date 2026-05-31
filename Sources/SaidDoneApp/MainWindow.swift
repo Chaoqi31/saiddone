@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import AVFoundation
 import SaidDoneCore
 
 /// Recent history for the main window.
@@ -8,12 +9,31 @@ final class HistoryModel: ObservableObject {
     @Published var entries: [HistoryEntry] = []
     @Published var search = ""
     let store: HistoryStore
+    private var player: AVAudioPlayer?
     init(store: HistoryStore) { self.store = store; refresh() }
     func refresh() { entries = store.recent() }
     func clear() { store.clear(); refresh() }
-    func delete(_ e: HistoryEntry) { store.remove(id: e.id); refresh() }
+    func delete(_ e: HistoryEntry) {
+        if let u = audioURL(e) { try? FileManager.default.removeItem(at: u) }
+        store.remove(id: e.id); refresh()
+    }
     var filtered: [HistoryEntry] {
         search.isEmpty ? entries : entries.filter { $0.text.localizedCaseInsensitiveContains(search) }
+    }
+
+    func audioURL(_ e: HistoryEntry) -> URL? {
+        guard let f = e.audioFile else { return nil }
+        let u = store.audioURL(f)
+        return FileManager.default.fileExists(atPath: u.path) ? u : nil
+    }
+    func play(_ e: HistoryEntry) {
+        guard let u = audioURL(e) else { return }
+        player = try? AVAudioPlayer(contentsOf: u); player?.play()
+    }
+    /// Reveal the WAV in Finder (user can then copy/move it out).
+    func exportAudio(_ e: HistoryEntry) {
+        guard let u = audioURL(e) else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([u])
     }
 }
 
@@ -180,6 +200,12 @@ private struct HistoryPane: View {
                 Text(e.date.formatted(date: .omitted, time: .shortened))
                     .font(.caption2).foregroundStyle(.secondary)
                 Spacer()
+                if model.audioURL(e) != nil {
+                    Button { model.play(e) } label: { Image(systemName: "play.circle") }
+                        .buttonStyle(.borderless).help("Play audio")
+                    Button { model.exportAudio(e) } label: { Image(systemName: "square.and.arrow.down") }
+                        .buttonStyle(.borderless).help("Reveal audio in Finder")
+                }
                 Button { copyToClipboard(e.text) } label: { Image(systemName: "doc.on.doc") }
                     .buttonStyle(.borderless).help("Copy")
             }
