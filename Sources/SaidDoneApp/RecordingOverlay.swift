@@ -10,11 +10,12 @@ final class OverlayModel: ObservableObject {
     @Published var label: String = "Recording"
     @Published var processing = false
     @Published var errorText: String?
+    @Published var previewText = ""
     var onFinish: (() -> Void)?
     var onCancel: (() -> Void)?
 
     func pushLevel(_ v: Float) { level = v; levels.removeFirst(); levels.append(v) }
-    func reset() { level = 0; seconds = 0; processing = false; errorText = nil; levels = Array(repeating: 0, count: 30) }
+    func reset() { level = 0; seconds = 0; processing = false; errorText = nil; previewText = ""; levels = Array(repeating: 0, count: 30) }
 }
 
 /// Floating, click-through-except-buttons overlay: dot + waveform + timer + ✓/✕ while recording,
@@ -71,6 +72,7 @@ final class RecordingOverlay {
     }
 
     func updateLevel(_ level: Float) { model.pushLevel(level) }
+    func updatePreview(_ text: String) { model.previewText = text }
 
     private func makePanel() -> NSPanel {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 56),
@@ -120,7 +122,12 @@ private struct OverlayView: View {
                 HStack(spacing: 9) {
                     Circle().fill(.red).frame(width: 8, height: 8)
                         .opacity(model.seconds % 2 == 0 ? 1 : 0.35)
-                    waveform.frame(width: 96, height: 22)
+                    if model.previewText.isEmpty {
+                        waveform.frame(width: 96, height: 22)
+                    } else {
+                        Text(model.previewText).font(.system(size: 11)).lineLimit(1)
+                            .truncationMode(.head).frame(width: 96, alignment: .leading)
+                    }
                     Text(timeString).font(.system(size: 11, weight: .medium).monospacedDigit())
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 2)

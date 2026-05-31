@@ -111,6 +111,7 @@ struct SettingsView: View {
             Toggle("Recording sounds", isOn: $model.config.soundsEnabled)
             Toggle("Mute system audio while recording", isOn: $model.config.muteAudioWhileRecording)
             Toggle("Voice commands (say \"换行\"/\"new line\" to break lines)", isOn: $model.config.voiceCommandsEnabled)
+            Toggle("Show live transcription preview while recording", isOn: $model.config.showLivePreview)
             Divider()
             HStack {
                 Button("Export Settings…") { model.export() }

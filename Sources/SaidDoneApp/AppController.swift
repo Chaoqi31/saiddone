@@ -34,6 +34,24 @@ final class AppController: NSObject, NSApplicationDelegate {
     private let historyStore: HistoryStore
     private lazy var historyModel = HistoryModel(store: historyStore)
     private let overlay = RecordingOverlay()
+    private var previewTask: Task<Void, Never>?
+
+    /// Live transcription preview while recording (opt-in). Cancelled before the final pipeline runs.
+    private func startPreviewLoop() {
+        previewTask?.cancel()
+        previewTask = Task { @MainActor in
+            while !Task.isCancelled, self.activeMode != nil {
+                try? await Task.sleep(for: .milliseconds(1500))
+                guard !Task.isCancelled, self.activeMode != nil else { break }
+                let snap = self.capture.snapshot()
+                guard snap.duration >= 0.8 else { continue }
+                if let t = try? await self.asr.transcribe(snap.trimmedSilence(), languageHint: self.config.asrLanguage),
+                   !Task.isCancelled, self.activeMode != nil {
+                    self.overlay.updatePreview(t)
+                }
+            }
+        }
+    }
     private lazy var setupModel: SetupModel = {
         let m = SetupModel()
         m.llmModelID = config.llm.modelID
@@ -217,6 +235,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         guard activeMode != nil else { return }
         _ = capture.stop()
         capture.onLevel = nil
+        previewTask?.cancel(); previewTask = nil
         if config.muteAudioWhileRecording { SystemAudio.setMuted(false) }
         overlay.hide()
         activeMode = nil
@@ -272,6 +291,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             overlay.show(label: label)
             if config.soundsEnabled { SoundFx.start() }
             if config.muteAudioWhileRecording { SystemAudio.setMuted(true) }
+            if config.showLivePreview { startPreviewLoop() }
             slog("recording started")
             refreshUI()
         } catch {
@@ -305,6 +325,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         guard let mode = activeMode else { return }
         let audio = capture.stop()
         capture.onLevel = nil
+        previewTask?.cancel(); previewTask = nil
         if config.muteAudioWhileRecording { SystemAudio.setMuted(false) }
         overlay.showProcessing()
         activeMode = nil
