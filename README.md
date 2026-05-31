@@ -1,38 +1,50 @@
 # SaidDone
 
-Open-source, local-first voice-to-text for macOS — **said and done**. Press a hotkey, speak, and your words land at the cursor in any app, cleaned up and ready to use. Open-source alternative to paid cloud dictation tools (e.g. Typeless).
+Open-source, local-first voice-to-text for macOS — **said and done**. Press a hotkey, speak, and your words land at the cursor in any app, cleaned up and ready to use. An open-source alternative to paid cloud dictation tools (e.g. Typeless).
 
-- **Local-first, private, offline, zero-key.** A fully on-device path is guaranteed — audio and text never leave your Mac, no API key required. (See [ADR-0001](docs/adr/0001-local-cloud-coequal-providers.md).)
-- **Cloud is a co-equal option, not an afterthought.** Bring your own key for max-quality polish/translation when you want it.
-- **Modes:** Dictation (transcribe + local polish, handles zh-en code-switching), Translation (speak one language → insert another), Custom Dictionary, per-app tone (App Profile).
+## Features
 
-## Status
+- **Three modes:** Dictation · Translation · **Rewrite** (speak an instruction to rewrite the selected text).
+- **Local-first & private:** on-device ASR (WhisperKit, offline) — audio and text can stay on your Mac, no API key required.
+- **Cloud is a co-equal option:** bring your own OpenAI-compatible key (e.g. DeepSeek) for top-quality polish/translation.
+- **Smart polish:** punctuation, Simplified Chinese, auto bullet/paragraph structuring, filler removal, zh-en code-switching, subtitle-hallucination filtering, silence trimming.
+- **Custom dictionary with auto-learn:** fix a word in History and the correction is learned for next time.
+- **Personalization** (tell the AI your background/jargon), per-app tone (App Profile), and history you can search, edit, re-insert, export — with the original audio saved.
+- **Polished app:** menu-bar + Dock, rebindable hotkeys, recording overlay (waveform + optional live preview), interaction sounds, mute-while-recording, launch-at-login, usage stats, onboarding.
 
-v1 in progress. Core pipeline + menu-bar app skeleton implemented and unit-tested. See [GOALS.md](GOALS.md) for the success criteria and [ARCHITECTURE.md](ARCHITECTURE.md) for the design.
+## Install
 
-## Architecture (short)
+### Download
+1. Get `SaidDone.dmg` (build it with `./scripts/release.sh`, or from a Release).
+2. Open the DMG and drag **SaidDone** to **Applications**.
+3. First launch: right-click **SaidDone → Open → Open** (it's open-source and ad-hoc signed, so macOS asks once). Or: `xattr -dr com.apple.quarantine /Applications/SaidDone.app`.
+4. Grant **Microphone** and **Accessibility** when prompted (Accessibility is needed to paste at the cursor).
 
-```
-hotkey (toggle) → capture audio → ASR Provider → Custom Dictionary
-  → Polish [Dictation] / Polish→Translate [Translation]  → Insert at cursor (clipboard paste)
-```
-
-- **Default local engines:** Qwen3-ASR-1.7B (MLX) for speech, Qwen3.5-0.8B (MLX) for polish/translate, WhisperKit (large-v3-turbo) as the speed/compatibility fallback. (ADR-0003/0004)
-- **Stack:** native Swift / SwiftUI, Apple Silicon, macOS 14+. (ADR-0002)
-
-Full docs: [GOALS.md](GOALS.md) · [CONTEXT.md](CONTEXT.md) · [ARCHITECTURE.md](ARCHITECTURE.md) · [docs/adr/](docs/adr/)
-
-## Build
-
+### Build from source
 ```sh
-swift build      # build core + app
-swift test       # run unit tests
-./scripts/bundle.sh   # package a runnable SaidDone.app (menu-bar)
+swift build && swift test     # build + run tests
+./scripts/install.sh          # build the app and install it to /Applications
+```
+Requires Xcode 26+ / Swift 6.2 on Apple Silicon. MLX-backed local models need the Metal toolchain: `xcodebuild -downloadComponent MetalToolchain`.
+
+### Models
+- Speech model (WhisperKit) downloads on first use — or from the **Setup** tab, or `./scripts/get-models.sh`.
+- For a local MLX LLM: `./scripts/get-models.sh mlx-community/Qwen3-1.7B-4bit`, then pick it in **Settings → Providers**.
+
+### Notarized distribution (optional — needs an Apple Developer account)
+For a build strangers can open with no Gatekeeper prompt:
+```sh
+export DEVID="Developer ID Application: NAME (TEAMID)" APPLE_ID="…" TEAM_ID="…" APP_PW="…"
+./scripts/notarize.sh
 ```
 
-Requires Xcode 26+ / Swift 6.2, Apple Silicon.
+## Hotkeys
 
-Out of the box the app runs fully local with **WhisperKit ASR + rule-based polish** (no key, offline). To enable the **MLX Qwen LLM** (stronger polish + translation), the Metal toolchain must be installed (`sudo xcodebuild -runFirstLaunch`), then set `llm.modelID` to `mlx-community/Qwen3-1.7B-4bit` in `~/Library/Application Support/SaidDone/config.json` or Settings. See [STATUS.md](STATUS.md).
+`⌃⌥D` Dictation · `⌃⌥T` Translation · `⌃⌥R` Rewrite — all rebindable in **Settings → General**.
+
+## Cloud (optional, best quality)
+
+**Settings → Cloud** → add an OpenAI-compatible key, then set the LLM (and/or ASR) location to **Cloud** in **Providers**. Example (DeepSeek): Base URL `https://api.deepseek.com`, model `deepseek-v4-flash`.
 
 ## License
 
