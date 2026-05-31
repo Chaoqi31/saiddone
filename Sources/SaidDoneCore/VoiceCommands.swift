@@ -16,7 +16,7 @@ public enum VoiceCommands {
             }
         }
         t = t.replacingOccurrences(of: "[ \\t]*\\n[ \\t]*", with: "\n", options: .regularExpression)
-        t = t.replacingOccurrences(of: "\\n{3,}", with: "\n\n", options: .regularExpression)
+        t = t.replacingOccurrences(of: "\\n{2,}", with: "\n", options: .regularExpression)
         return t.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
