@@ -32,6 +32,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleDisplayName</key>      <string>SaidDone</string>
   <key>CFBundleIdentifier</key>       <string>com.saiddone.app</string>
   <key>CFBundleExecutable</key>       <string>SaidDone</string>
+  <key>CFBundleIconFile</key>         <string>AppIcon</string>
   <key>CFBundlePackageType</key>      <string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key>          <string>1</string>
@@ -42,6 +43,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+# App icon (generated, not committed).
+./scripts/make-icon.sh "$APP/Contents/Resources/AppIcon.icns" >/dev/null
 
 # Prefer the stable self-signed "SaidDone Dev" identity so macOS persists the Accessibility grant
 # across rebuilds (ad-hoc "-" re-prompts every launch). Falls back to ad-hoc if the cert is absent.

@@ -115,8 +115,14 @@ struct SettingsView: View {
             Picker("LLM location", selection: $model.config.llm.location) {
                 ForEach(ProviderLocation.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
             }
-            TextField("LLM model", text: $model.config.llm.modelID)
-            Text("Local = private/offline/zero-key. Cloud = opt-in, data leaves device.")
+            Picker("Local LLM model", selection: $model.config.llm.modelID) {
+                Text("Qwen3 0.6B — fastest").tag("mlx-community/Qwen3-0.6B-4bit")
+                Text("Qwen3 1.7B — default").tag("mlx-community/Qwen3-1.7B-4bit")
+                Text("Qwen3 4B — better punctuation").tag("mlx-community/Qwen3-4B-4bit")
+                Text("Qwen3 8B — best, heavy").tag("mlx-community/Qwen3-8B-4bit")
+                Text("Rule-based only — no model").tag("rule-based")
+            }
+            Text("Bigger = better polish/punctuation, more RAM. New model must be downloaded first (Setup tab / get-models.sh). Local = private/offline/zero-key; Cloud = opt-in, data leaves device.")
                 .font(.caption).foregroundStyle(.secondary)
         }.padding()
     }

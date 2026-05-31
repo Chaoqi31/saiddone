@@ -74,9 +74,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         refreshUI()
     }
 
-    private func menuItem(_ title: String, _ sel: Selector) -> NSMenuItem {
+    private func menuItem(_ title: String, _ sel: Selector?, symbol: String? = nil) -> NSMenuItem {
         let i = NSMenuItem(title: title, action: sel, keyEquivalent: "")
         i.target = self
+        if let symbol { i.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil) }
         return i
     }
 
@@ -138,15 +139,19 @@ final class AppController: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         if let mode = activeMode {
             let label: String = { if case .translation = mode { return "Translation" } else { return "Dictation" } }()
-            menu.addItem(menuItem("● Recording \(label) — click to Stop & Insert", #selector(stopAndInsert)))
-            menu.addItem(menuItem("✕ Cancel (discard)", #selector(cancelRecording)))
+            menu.addItem(menuItem("Stop & Insert — \(label)", #selector(stopAndInsert), symbol: "stop.circle.fill"))
+            menu.addItem(menuItem("Cancel (discard)", #selector(cancelRecording), symbol: "xmark.circle"))
+        } else if isWorking {
+            let working = menuItem("Working…", nil, symbol: "hourglass"); working.isEnabled = false
+            menu.addItem(working)
         } else {
-            menu.addItem(menuItem(isWorking ? "⏳ Working…" : "Start Dictation  (⌃⌥D)", #selector(toggleDictation)))
-            menu.addItem(menuItem("Start Translation  (⌃⌥T)", #selector(toggleTranslation)))
+            menu.addItem(menuItem("Start Dictation        ⌃⌥D", #selector(toggleDictation), symbol: "mic"))
+            menu.addItem(menuItem("Start Translation     ⌃⌥T", #selector(toggleTranslation), symbol: "globe"))
         }
         menu.addItem(.separator())
-        menu.addItem(menuItem("Open SaidDone…", #selector(openMainWindow)))
-        menu.addItem(menuItem("Settings…", #selector(openSettings)))
+        menu.addItem(menuItem("Open SaidDone…", #selector(openMainWindow), symbol: "macwindow"))
+        menu.addItem(menuItem("Settings…", #selector(openSettings), symbol: "gearshape"))
+        menu.addItem(.separator())
         menu.addItem(withTitle: "Quit SaidDone", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
 
@@ -154,6 +159,22 @@ final class AppController: NSObject, NSApplicationDelegate {
         let name = recording ? "mic.fill" : (isWorking ? "hourglass" : "mic")
         statusItem.button?.image = NSImage(systemSymbolName: name, accessibilityDescription: "SaidDone")
         statusItem.button?.contentTintColor = recording ? .systemRed : nil
+        recording ? startBlink() : stopBlink()
+    }
+
+    private var blinkTimer: Timer?
+    private func startBlink() {
+        guard blinkTimer == nil else { return }
+        blinkTimer = Timer.scheduledTimer(withTimeInterval: 0.6, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let b = self?.statusItem.button else { return }
+                b.alphaValue = b.alphaValue > 0.6 ? 0.35 : 1.0
+            }
+        }
+    }
+    private func stopBlink() {
+        blinkTimer?.invalidate(); blinkTimer = nil
+        statusItem.button?.alphaValue = 1.0
     }
 
     private func updateStatusIcon() { refreshUI() }
