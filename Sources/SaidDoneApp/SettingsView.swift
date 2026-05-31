@@ -64,16 +64,17 @@ final class ConfigModel: ObservableObject {
 /// Minimal v1 Settings: target language, provider location/model, Custom Dictionary, App Profiles.
 struct SettingsView: View {
     @ObservedObject var model: ConfigModel
+    @ObservedObject var setup: SetupModel
 
     var body: some View {
         TabView {
             general.tabItem { Text("General") }
             providers.tabItem { Text("Providers") }
             cloud.tabItem { Text("Cloud") }
-            dictionary.tabItem { Text("Dictionary") }
             profiles.tabItem { Text("App Profiles") }
+            SetupView(model: setup).tabItem { Text("Setup") }
         }
-        .frame(width: 460, height: 380)
+        .frame(width: 480, height: 420)
         .onDisappear { model.save() }
     }
 
@@ -144,26 +145,6 @@ struct SettingsView: View {
         }.padding()
     }
 
-    private var dictionary: some View {
-        VStack(alignment: .leading) {
-            List {
-                ForEach($model.config.dictionary.entries, id: \.wrong) { $entry in
-                    HStack {
-                        TextField("heard", text: $entry.wrong)
-                        Image(systemName: "arrow.right")
-                        TextField("correct", text: $entry.right)
-                    }
-                }
-                .onDelete { model.config.dictionary.entries.remove(atOffsets: $0) }
-            }
-            HStack {
-                Button("Add term") { model.config.dictionary.entries.append(.init(wrong: "", right: "")) }
-                Spacer()
-                Button("Import…") { model.importDictionary() }
-                Button("Export…") { model.exportDictionary() }
-            }
-        }.padding()
-    }
 
     private var profiles: some View {
         VStack(alignment: .leading) {

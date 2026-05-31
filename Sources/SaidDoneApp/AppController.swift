@@ -107,9 +107,8 @@ final class AppController: NSObject, NSApplicationDelegate {
             return
         }
         historyModel.refresh()
-        setupModel.refresh()
         dictionaryModel.entries = config.dictionary.entries   // sync with any Settings edits
-        let win = NSWindow(contentViewController: NSHostingController(rootView: MainView(history: historyModel, setup: setupModel, dictionary: dictionaryModel)))
+        let win = NSWindow(contentViewController: NSHostingController(rootView: MainView(history: historyModel, dictionary: dictionaryModel)))
         win.title = "SaidDone"
         win.styleMask = [.titled, .closable, .miniaturizable]
         win.isReleasedWhenClosed = false
@@ -128,7 +127,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         let model = ConfigModel(config: config) { [weak self] newConfig in
             self?.applyConfig(newConfig)
         }
-        let win = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(model: model)))
+        setupModel.refresh()
+        let win = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(model: model, setup: setupModel)))
         win.title = "SaidDone Settings"
         win.styleMask = [.titled, .closable]
         win.isReleasedWhenClosed = false

@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import AVFoundation
+import UniformTypeIdentifiers
 import SaidDoneCore
 
 /// Recent history for the main window.
@@ -60,16 +61,35 @@ final class DictionaryModel: ObservableObject {
     func commit() { onChange(entries) }
     func add() { entries.insert(.init(wrong: "", right: ""), at: 0); commit() }
     func removeAt(_ i: Int) { guard entries.indices.contains(i) else { return }; entries.remove(at: i); commit() }
+
+    func export() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "saiddone-dictionary.json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted]
+        try? enc.encode(entries).write(to: url)
+    }
+    func importFile() {
+        let panel = NSOpenPanel(); panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = try? Data(contentsOf: url),
+              let imported = try? JSONDecoder().decode([DictionaryEntry].self, from: data) else { return }
+        var byKey = Dictionary(entries.map { ($0.wrong, $0) }) { a, _ in a }
+        for e in imported { byKey[e.wrong] = e }
+        entries = byKey.values.sorted { $0.wrong < $1.wrong }
+        commit()
+    }
 }
 
 enum Pane: String, CaseIterable, Identifiable {
-    case home, history, dictionary, setup
+    case home, history, dictionary
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
     var icon: String {
         switch self {
         case .home: return "house"; case .history: return "clock"
-        case .dictionary: return "character.book.closed"; case .setup: return "checklist"
+        case .dictionary: return "character.book.closed"
         }
     }
 }
@@ -81,7 +101,6 @@ func copyToClipboard(_ text: String) {
 
 struct MainView: View {
     @ObservedObject var history: HistoryModel
-    @ObservedObject var setup: SetupModel
     @ObservedObject var dictionary: DictionaryModel
     @State private var pane: Pane? = .home
 
@@ -90,16 +109,15 @@ struct MainView: View {
             List(Pane.allCases, selection: $pane) { p in
                 Label(p.title, systemImage: p.icon).tag(p)
             }
-            .navigationSplitViewColumnWidth(min: 150, ideal: 170, max: 210)
+            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
         } detail: {
             switch pane ?? .home {
             case .home: HomePane(history: history, go: { pane = $0 })
             case .history: HistoryPane(model: history)
             case .dictionary: DictionaryPane(model: dictionary)
-            case .setup: SetupView(model: setup)
             }
         }
-        .frame(minWidth: 720, idealWidth: 760, minHeight: 480, idealHeight: 520)
+        .frame(minWidth: 900, idealWidth: 980, minHeight: 600, idealHeight: 680)
     }
 }
 
@@ -110,6 +128,8 @@ private struct DictionaryPane: View {
             HStack {
                 Text("Dictionary").font(.title2.bold())
                 Spacer()
+                Button { model.importFile() } label: { Image(systemName: "square.and.arrow.down") }.help("Import")
+                Button { model.export() } label: { Image(systemName: "square.and.arrow.up") }.help("Export")
                 Button { model.add() } label: { Label("Add term", systemImage: "plus") }
             }
             Text("Heard → Correct. Applied to every transcript. Auto-filled when you fix a word in History.")
