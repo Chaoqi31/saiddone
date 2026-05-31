@@ -260,6 +260,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             activeMode = mode
             let label: String = { if case .translation = mode { return "Translating" } else { return "Recording" } }()
             overlay.show(label: label)
+            if config.soundsEnabled { SoundFx.start() }
             slog("recording started")
             refreshUI()
         } catch {
@@ -325,6 +326,7 @@ final class AppController: NSObject, NSApplicationDelegate {
                                                       raw: result.rawTranscript, text: result.text, audioFile: audioFile))
                 self.historyModel.refresh()
                 InsertionService.insert(result.text, autoCopy: self.config.autoCopyToClipboard)
+                if self.config.soundsEnabled { SoundFx.done() }
                 self.overlay.hide()
             } catch {
                 slog("pipeline error: \(error)")

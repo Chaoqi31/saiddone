@@ -107,6 +107,7 @@ struct SettingsView: View {
             Divider()
             Toggle("Launch at login", isOn: $model.config.launchAtLogin)
             Toggle("Keep result on clipboard (auto-copy)", isOn: $model.config.autoCopyToClipboard)
+            Toggle("Recording sounds", isOn: $model.config.soundsEnabled)
             Divider()
             HStack {
                 Button("Export Settings…") { model.export() }

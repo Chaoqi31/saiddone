@@ -48,6 +48,8 @@ public struct AppConfig: Codable, Sendable {
     public var launchAtLogin: Bool
     /// Leave the inserted text on the clipboard afterwards (don't restore the previous clipboard).
     public var autoCopyToClipboard: Bool
+    /// Play a subtle sound on record start / result inserted.
+    public var soundsEnabled: Bool
     /// Opt-in cloud endpoints (used when a provider's location is .cloud and a key is set).
     public var cloud: CloudConfig
     /// Personalization: the user's background/profession/jargon, fed to the Polish LLM (like
@@ -65,11 +67,13 @@ public struct AppConfig: Codable, Sendable {
         appProfiles: AppProfileStore = .init(),
         launchAtLogin: Bool = false,
         autoCopyToClipboard: Bool = false,
+        soundsEnabled: Bool = true,
         cloud: CloudConfig = .init(),
         userProfile: String = ""
     ) {
         self.launchAtLogin = launchAtLogin
         self.autoCopyToClipboard = autoCopyToClipboard
+        self.soundsEnabled = soundsEnabled
         self.cloud = cloud
         self.userProfile = userProfile
         self.dictationHotkey = dictationHotkey
@@ -96,6 +100,7 @@ public struct AppConfig: Codable, Sendable {
         appProfiles = try c.decodeIfPresent(AppProfileStore.self, forKey: .appProfiles) ?? .init()
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         autoCopyToClipboard = try c.decodeIfPresent(Bool.self, forKey: .autoCopyToClipboard) ?? false
+        soundsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundsEnabled) ?? true
         cloud = try c.decodeIfPresent(CloudConfig.self, forKey: .cloud) ?? .init()
         userProfile = try c.decodeIfPresent(String.self, forKey: .userProfile) ?? ""
     }
