@@ -16,4 +16,18 @@ final class AudioTests: XCTestCase {
         XCTAssertTrue(AudioSamples(samples: [Float](repeating: 0, count: 16000 * 10)).isShortUtterance)
         XCTAssertFalse(AudioSamples(samples: [Float](repeating: 0, count: 16000 * 20)).isShortUtterance)
     }
+
+    func testTrimsLeadingTrailingSilence() {
+        var s = [Float](repeating: 0, count: 16_000)      // 1s silence
+        s += [Float](repeating: 0.5, count: 8_000)        // 0.5s speech
+        s += [Float](repeating: 0, count: 16_000)         // 1s silence
+        let trimmed = AudioSamples(samples: s, sampleRate: 16_000).trimmedSilence()
+        XCTAssertLessThan(trimmed.duration, 1.0)
+        XCTAssertGreaterThan(trimmed.duration, 0.4)
+    }
+
+    func testAllSilenceUntouched() {
+        let a = AudioSamples(samples: [Float](repeating: 0, count: 1000), sampleRate: 16_000)
+        XCTAssertEqual(a.trimmedSilence().samples.count, 1000)
+    }
 }

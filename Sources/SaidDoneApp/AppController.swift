@@ -65,6 +65,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         overlay.model.onFinish = { [weak self] in self?.finishRecording() }
         overlay.model.onCancel = { [weak self] in self?.cancelRecording() }
         historyModel.onLearnTerms = { [weak self] terms in self?.learnTerms(terms) }
+        historyModel.onReinsert = { [weak self] text in
+            InsertionService.insert(text, autoCopy: self?.config.autoCopyToClipboard ?? false)
+        }
         let n = registerHotkeys()
         slog("launched, \(n) hotkeys registered")
         Permissions.accessibilityTrusted(prompt: true)
@@ -266,6 +269,26 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// Calm, user-facing message for a pipeline failure (technical detail stays in the log).
+    static func friendlyError(_ error: Error) -> String {
+        let s = "\(error)".lowercased()
+        if s.contains("tls") || s.contains("-1200") || s.contains("offline") || s.contains("network")
+            || s.contains("connection") || s.contains("timed out") || s.contains("could not connect") {
+            return "网络不可用，请检查连接后重试。"
+        }
+        if let pe = error as? ProviderError {
+            switch pe {
+            case .notConfigured: return "云端未配置，请在 Settings → Cloud 填写 Key。"
+            case .modelUnavailable: return "引擎暂不可用，请稍后重试。"
+            case .latencyBudgetExceeded: return "处理超时，请重试。"
+            }
+        }
+        if s.contains("401") || s.contains("403") || s.contains("unauthor") || s.contains("api key") {
+            return "云端 Key 无效，请在 Settings → Cloud 检查。"
+        }
+        return "转写失败，请重试。"
+    }
+
     private func finishRecording() {
         guard let mode = activeMode else { return }
         let audio = capture.stop()
@@ -283,7 +306,7 @@ final class AppController: NSObject, NSApplicationDelegate {
 
         let orch = PipelineOrchestrator(asr: asr, llm: llm, dictionary: config.dictionary)
         Task { @MainActor in
-            defer { self.isWorking = false; self.overlay.hide(); self.refreshUI() }
+            defer { self.isWorking = false; self.refreshUI() }
             do {
                 let result = try await orch.run(audio, mode: mode, context: context,
                                                 languageHint: self.config.asrLanguage)
@@ -302,9 +325,11 @@ final class AppController: NSObject, NSApplicationDelegate {
                                                       raw: result.rawTranscript, text: result.text, audioFile: audioFile))
                 self.historyModel.refresh()
                 InsertionService.insert(result.text, autoCopy: self.config.autoCopyToClipboard)
+                self.overlay.hide()
             } catch {
                 slog("pipeline error: \(error)")
                 NSSound.beep()
+                self.overlay.showError(Self.friendlyError(error))
             }
         }
     }

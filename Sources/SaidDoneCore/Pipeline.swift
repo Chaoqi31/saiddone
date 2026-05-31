@@ -37,7 +37,7 @@ public struct PipelineOrchestrator: Sendable {
         let clock = ContinuousClock()
         let start = clock.now
 
-        let raw = try await asr.transcribe(audio, languageHint: languageHint)
+        let raw = try await asr.transcribe(audio.trimmedSilence(), languageHint: languageHint)
         let cleaned = ASRCleanup.strip(raw)          // drop hallucinations (谢谢大家 …)
         let corrected = dictionary.apply(to: cleaned) // user term corrections
 

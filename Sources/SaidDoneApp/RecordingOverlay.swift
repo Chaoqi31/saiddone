@@ -9,11 +9,12 @@ final class OverlayModel: ObservableObject {
     @Published var seconds: Int = 0
     @Published var label: String = "Recording"
     @Published var processing = false
+    @Published var errorText: String?
     var onFinish: (() -> Void)?
     var onCancel: (() -> Void)?
 
     func pushLevel(_ v: Float) { level = v; levels.removeFirst(); levels.append(v) }
-    func reset() { level = 0; seconds = 0; processing = false; levels = Array(repeating: 0, count: 30) }
+    func reset() { level = 0; seconds = 0; processing = false; errorText = nil; levels = Array(repeating: 0, count: 30) }
 }
 
 /// Floating, click-through-except-buttons overlay: dot + waveform + timer + ✓/✕ while recording,
@@ -48,9 +49,24 @@ final class RecordingOverlay {
         model.processing = true
     }
 
+    /// Show an error in the overlay for a few seconds, then dismiss (so failures aren't silent).
+    func showError(_ message: String) {
+        timer?.invalidate(); timer = nil
+        model.processing = false
+        model.errorText = message
+        let panel = self.panel ?? makePanel()
+        self.panel = panel
+        reposition(panel)
+        panel.orderFrontRegardless()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            if self?.model.errorText == message { self?.hide() }
+        }
+    }
+
     func hide() {
         timer?.invalidate(); timer = nil
         model.processing = false
+        model.errorText = nil
         panel?.orderOut(nil)
     }
 
@@ -84,7 +100,14 @@ private struct OverlayView: View {
 
     var body: some View {
         Group {
-            if model.processing {
+            if let err = model.errorText {
+                HStack(spacing: 10) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text(err).font(.system(size: 12, weight: .medium)).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+            } else if model.processing {
                 HStack(spacing: 10) {
                     Image(systemName: "waveform").foregroundStyle(.purple)
                     VStack(alignment: .leading, spacing: 3) {

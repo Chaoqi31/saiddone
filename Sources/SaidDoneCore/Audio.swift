@@ -21,6 +21,30 @@ public struct AudioSamples: Sendable {
     /// True when short enough that the B1 (≤2s) latency bar applies (GOALS: short audio ≤15s).
     public var isShortUtterance: Bool { duration <= 15 }
 
+    /// Trim leading/trailing silence (with a small pad). Whisper hallucinates subtitle outros
+    /// ("谢谢大家"…) on trailing silence, so cutting it removes the root cause + speeds ASR.
+    public func trimmedSilence(threshold: Float = 0.012, windowMs: Double = 30, padMs: Double = 120) -> AudioSamples {
+        guard !samples.isEmpty, sampleRate > 0 else { return self }
+        let win = max(1, Int(sampleRate * windowMs / 1000))
+        func loud(_ start: Int) -> Bool {
+            let end = min(start + win, samples.count)
+            guard end > start else { return false }
+            var sum: Float = 0
+            for i in start..<end { sum += samples[i] * samples[i] }
+            return (sum / Float(end - start)).squareRoot() > threshold
+        }
+        var first = 0
+        while first < samples.count, !loud(first) { first += win }
+        guard first < samples.count else { return self }   // all silence -> leave untouched
+        var last = samples.count
+        var j = samples.count - win
+        while j > first { if loud(j) { last = min(samples.count, j + win); break }; j -= win }
+        let pad = Int(sampleRate * padMs / 1000)
+        let lo = max(0, first - pad), hi = min(samples.count, last + pad)
+        guard lo < hi else { return self }
+        return AudioSamples(samples: Array(samples[lo..<hi]), sampleRate: sampleRate)
+    }
+
     /// Encode to a 16-bit PCM WAV (for cloud upload and saving to history).
     public func wavData() -> Data {
         let rate = Int(sampleRate)

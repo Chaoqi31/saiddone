@@ -13,7 +13,18 @@ final class HistoryModel: ObservableObject {
     private var player: AVAudioPlayer?
     /// Called with terms learned when the user edits an entry (wired to add them to the dictionary).
     var onLearnTerms: (([DictionaryEntry]) -> Void)?
+    /// Re-insert a past entry at the cursor (wired to the insertion service).
+    var onReinsert: ((String) -> Void)?
     init(store: HistoryStore) { self.store = store; refresh() }
+
+    func exportAll() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "saiddone-history.txt"
+        panel.allowedContentTypes = [.plainText]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let text = entries.map { "[\($0.date.formatted())] \($0.text)" }.joined(separator: "\n\n")
+        try? text.write(to: url, atomically: true, encoding: .utf8)
+    }
 
     /// Save an edited entry; auto-learns Latin-term corrections into the dictionary. Returns them.
     @discardableResult
@@ -182,6 +193,16 @@ private struct HomePane: View {
                     }
                 }
 
+                card("Stats", icon: "chart.bar.fill") {
+                    HStack(spacing: 0) {
+                        stat("\(history.entries.count)", "dictations")
+                        Divider().frame(height: 34)
+                        stat("\(totalChars)", "characters")
+                        Divider().frame(height: 34)
+                        stat("≈\(minutesSaved) min", "typing saved")
+                    }
+                }
+
                 card("Quick start", icon: "bolt.fill") {
                     shortcutRow("Dictation", "speak → press again to stop & insert", "⌃⌥D")
                     Divider()
@@ -212,6 +233,17 @@ private struct HomePane: View {
             }
             .padding(24)
         }
+    }
+
+    private var totalChars: Int { history.entries.reduce(0) { $0 + $1.text.count } }
+    private var minutesSaved: Int { max(0, totalChars / 200) }   // ~200 chars/min typing
+
+    private func stat(_ value: String, _ label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value).font(.title2.weight(.semibold))
+            Text(label).font(.caption2).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private func card(_ title: String, icon: String, @ViewBuilder _ content: () -> some View) -> some View {
@@ -276,8 +308,12 @@ private struct HistoryPane: View {
         .searchable(text: $model.search, placement: .toolbar, prompt: "Search history")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Menu { Button("Refresh") { model.refresh() }; Button("Clear all", role: .destructive) { model.clear() } }
-                label: { Image(systemName: "ellipsis.circle") }
+                Menu {
+                    Button("Refresh") { model.refresh() }
+                    Button("Export…") { model.exportAll() }
+                    Divider()
+                    Button("Clear all", role: .destructive) { model.clear() }
+                } label: { Image(systemName: "ellipsis.circle") }
             }
         }
         .navigationTitle("History")
@@ -326,6 +362,8 @@ private struct HistoryPane: View {
                     Button { model.exportAudio(e) } label: { Image(systemName: "square.and.arrow.down") }
                         .buttonStyle(.borderless).help("Reveal audio in Finder")
                 }
+                Button { model.onReinsert?(e.text) } label: { Image(systemName: "arrow.up.left.square") }
+                    .buttonStyle(.borderless).help("Insert at cursor")
                 Button { draft = e.text; editing = e } label: { Image(systemName: "pencil") }
                     .buttonStyle(.borderless).help("Edit & learn term")
                 Button { copyToClipboard(e.text) } label: { Image(systemName: "doc.on.doc") }
