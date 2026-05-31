@@ -32,8 +32,11 @@ func loadAudio(_ path: String) throws -> AudioSamples {
 let specs = Array(CommandLine.arguments.dropFirst())
 guard !specs.isEmpty else { print("usage: SaidDoneSpike 'path|mode|lang' ..."); exit(2) }
 
-var cfg = AppConfig.default
-if let m = ProcessInfo.processInfo.environment["SAIDDONE_LLM"] { cfg.llm.modelID = m }
+// Load the REAL app config (same config.json the app uses) so the spike exercises the live
+// provider setup — including cloud DeepSeek when the app is set to cloud.
+let cfgDir = (try? ConfigStore.defaultDirectory()) ?? FileManager.default.temporaryDirectory
+var cfg = ConfigStore(directory: cfgDir).load()
+if let m = ProcessInfo.processInfo.environment["SAIDDONE_LLM"] { cfg.llm.modelID = m; cfg.llm.location = m == "rule-based" ? .local : cfg.llm.location }
 if let l = ProcessInfo.processInfo.environment["SAIDDONE_ASR_LANG"] { cfg.asrLanguage = (l == "auto") ? nil : l }
 let orch = PipelineOrchestrator(asr: ProviderFactory.makeASR(cfg), llm: ProviderFactory.makeLLM(cfg))
 
