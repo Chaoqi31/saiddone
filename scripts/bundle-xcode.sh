@@ -15,8 +15,13 @@ xcodebuild -scheme SaidDone -derivedDataPath "$DD" -destination 'platform=macOS,
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$PROD/SaidDone" "$APP/Contents/MacOS/SaidDone"
-# SPM resource bundles (metallib, tokenizer Hub) must sit next to the executable for Bundle.module.
-for b in "$PROD"/*.bundle; do [ -e "$b" ] && cp -R "$b" "$APP/Contents/MacOS/"; done
+# SPM resource bundles (metallib, tokenizer Hub). Bundle.module resolves via Bundle.main.resourceURL
+# (Contents/Resources) for a .app, but also checks next to the executable — copy to both to be safe.
+for b in "$PROD"/*.bundle; do
+  [ -e "$b" ] || continue
+  cp -R "$b" "$APP/Contents/Resources/"
+  cp -R "$b" "$APP/Contents/MacOS/"
+done
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
