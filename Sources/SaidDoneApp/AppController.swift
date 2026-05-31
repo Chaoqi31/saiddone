@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import SaidDoneCore
 import SaidDoneProviders
 
@@ -47,8 +48,38 @@ final class AppController: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "Translation (toggle)", action: #selector(toggleTranslation), keyEquivalent: "")
             .target = self
         menu.addItem(.separator())
+        menu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         menu.addItem(withTitle: "Quit SaidDone", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
+    }
+
+    private var settingsWindow: NSWindow?
+
+    @objc private func openSettings() {
+        if let win = settingsWindow {
+            win.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        let model = ConfigModel(config: config) { [weak self] newConfig in
+            self?.applyConfig(newConfig)
+        }
+        let win = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(model: model)))
+        win.title = "SaidDone Settings"
+        win.styleMask = [.titled, .closable]
+        win.isReleasedWhenClosed = false
+        settingsWindow = win
+        win.center()
+        win.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Persist edited config and rebuild providers so changes take effect immediately.
+    private func applyConfig(_ newConfig: AppConfig) {
+        config = newConfig
+        try? configStore.save(newConfig)
+        asr = ProviderFactory.makeASR(newConfig)
+        llm = ProviderFactory.makeLLM(newConfig)
     }
 
     private func updateStatusIcon() {
