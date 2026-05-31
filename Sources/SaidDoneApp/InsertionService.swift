@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import Carbon.HIToolbox
 
 /// Inserts text at the cursor in any app via clipboard paste (ADR-0005):
@@ -8,32 +9,36 @@ import Carbon.HIToolbox
 enum InsertionService {
     static func insert(_ text: String) {
         guard !text.isEmpty else { return }
-        let pasteboard = NSPasteboard.general
+        let trusted = AXIsProcessTrusted()
+        let front = NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
+        slog("insert: trusted=\(trusted), front=\(front), len=\(text.count)")
+        guard trusted else {
+            slog("insert: NOT trusted — paste will be dropped. Grant Accessibility to this build.")
+            // Leave the text on the clipboard so the user can ⌘V manually as a fallback.
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            return
+        }
 
-        // Save current clipboard items so we can restore (avoid clobbering user's clipboard).
+        let pasteboard = NSPasteboard.general
         let saved = pasteboard.pasteboardItems?.compactMap { item -> NSPasteboardItem? in
             let copy = NSPasteboardItem()
             var wroteAny = false
             for type in item.types {
-                if let data = item.data(forType: type) {
-                    copy.setData(data, forType: type)
-                    wroteAny = true
-                }
+                if let data = item.data(forType: type) { copy.setData(data, forType: type); wroteAny = true }
             }
             return wroteAny ? copy : nil
         }
 
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-
         synthesizeCommandV()
+        slog("insert: ⌘V posted")
 
-        // Restore after the paste has been delivered.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        // Restore after the paste is delivered (longer delay avoids racing the paste).
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             pasteboard.clearContents()
-            if let saved, !saved.isEmpty {
-                pasteboard.writeObjects(saved)
-            }
+            if let saved, !saved.isEmpty { pasteboard.writeObjects(saved) }
         }
     }
 

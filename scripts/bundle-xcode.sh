@@ -43,5 +43,11 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-codesign --force --sign - --deep "$APP" 2>/dev/null || echo "warn: codesign skipped"
+# Prefer the stable self-signed "SaidDone Dev" identity so macOS persists the Accessibility grant
+# across rebuilds (ad-hoc "-" re-prompts every launch). Falls back to ad-hoc if the cert is absent.
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "SaidDone Dev"; then
+  codesign --force --deep --sign "SaidDone Dev" "$APP"
+else
+  codesign --force --deep --sign - "$APP" 2>/dev/null || echo "warn: codesign skipped"
+fi
 echo "Built $APP (MLX-enabled)"
