@@ -117,7 +117,7 @@ struct MainView: View {
             case .dictionary: DictionaryPane(model: dictionary)
             }
         }
-        .frame(minWidth: 900, idealWidth: 980, minHeight: 600, idealHeight: 680)
+        .frame(minWidth: 820, minHeight: 560)   // no ideal -> panes don't drive window resizing
     }
 }
 

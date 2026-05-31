@@ -74,11 +74,14 @@ final class AppController: NSObject, NSApplicationDelegate {
         if !config.launchAtLogin { openMainWindow() }
     }
 
-    /// Clicking the app icon in Launchpad/Finder while it's already running re-opens the window.
+    /// Clicking the app/Dock icon while it's already running re-opens the window.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
         openMainWindow()
         return true
     }
+
+    /// Closing the window keeps the app alive in the menu bar (it's a background dictation tool).
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     // MARK: UI
 
@@ -110,8 +113,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         dictionaryModel.entries = config.dictionary.entries   // sync with any Settings edits
         let win = NSWindow(contentViewController: NSHostingController(rootView: MainView(history: historyModel, dictionary: dictionaryModel)))
         win.title = "SaidDone"
-        win.styleMask = [.titled, .closable, .miniaturizable]
+        win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         win.isReleasedWhenClosed = false
+        win.setContentSize(NSSize(width: 980, height: 680))   // fixed start size; user can resize
         mainWindow = win
         win.center()
         win.makeKeyAndOrderFront(nil)
