@@ -21,8 +21,15 @@ public struct CloudLLMProvider: LLMProvider {
     }
 
     public func polish(_ text: String, context: PolishContext) async throws -> String {
-        let sys = (context.tonePrompt.map { "\($0) " } ?? "")
-            + "Clean up this dictated text: fix punctuation, remove filler words and repeats, keep meaning and technical terms. Output only the cleaned text."
+        let tone = context.tonePrompt.map { "\($0) " } ?? ""
+        let sys = tone + "你是听写文本整理助手。务必："
+            + "① 中文一律用简体；"
+            + "② 加正确标点、合理断句分段；"
+            + "③ 去掉口头禅（嗯/呃/那个/就是说/um/uh/like）和重复词，说话者中途改口只保留最终版本；"
+            + "④ 若内容是列举多个要点，用换行分点（1. 2. 3.）输出，否则按语义自然分段换行，不要全部连成一长句；"
+            + "⑤ 删除明显的视频字幕套话幻觉（如\"请不吝点赞订阅转发打赏\"\"谢谢大家\"\"明镜与点点栏目\"）；"
+            + "⑥ 保留原意、原语言和专业术语。"
+            + "只输出整理后的文本，不要解释、不要引号。"
         return try await chat(system: sys, user: text)
     }
 
