@@ -44,6 +44,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         entries: config.dictionary.entries,
         onChange: { [weak self] entries in self?.saveDictionary(entries) }
     )
+    private lazy var configModel = ConfigModel(config: config) { [weak self] newConfig in
+        self?.applyConfig(newConfig)
+    }
 
     override init() {
         let dir = (try? ConfigStore.defaultDirectory()) ?? FileManager.default.temporaryDirectory
@@ -99,19 +102,25 @@ final class AppController: NSObject, NSApplicationDelegate {
         return i
     }
 
-    private var settingsWindow: NSWindow?
     private var mainWindow: NSWindow?
 
+    /// Sync the window's editor models with the latest config (dictionary/settings live in the window).
+    private func syncWindowModels() {
+        historyModel.refresh()
+        dictionaryModel.entries = config.dictionary.entries
+        configModel.config = config
+        setupModel.refresh()
+    }
+
     @objc private func openMainWindow() {
+        syncWindowModels()
         if let win = mainWindow {
-            historyModel.refresh()
             win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        historyModel.refresh()
-        dictionaryModel.entries = config.dictionary.entries   // sync with any Settings edits
-        let win = NSWindow(contentViewController: NSHostingController(rootView: MainView(history: historyModel, dictionary: dictionaryModel)))
+        let win = NSWindow(contentViewController: NSHostingController(
+            rootView: MainView(history: historyModel, dictionary: dictionaryModel, config: configModel, setup: setupModel)))
         win.title = "SaidDone"
         win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         win.isReleasedWhenClosed = false
@@ -122,30 +131,11 @@ final class AppController: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    @objc private func openSettings() {
-        if let win = settingsWindow {
-            win.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-        let model = ConfigModel(config: config) { [weak self] newConfig in
-            self?.applyConfig(newConfig)
-        }
-        setupModel.refresh()
-        let win = NSWindow(contentViewController: NSHostingController(rootView: SettingsView(model: model, setup: setupModel)))
-        win.title = "SaidDone Settings"
-        win.styleMask = [.titled, .closable]
-        win.isReleasedWhenClosed = false
-        settingsWindow = win
-        win.center()
-        win.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
     /// Dictionary changes are read live at dictation time, so just persist — no provider rebuild.
     private func saveDictionary(_ entries: [DictionaryEntry]) {
         config.dictionary.entries = entries
         try? configStore.save(config)
+        configModel.config = config   // keep the Settings editor in sync
     }
 
     /// Merge auto-learned correction terms into the dictionary (from a History edit).
@@ -165,6 +155,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         asr = ProviderFactory.makeASR(newConfig)
         llm = ProviderFactory.makeLLM(newConfig)
         setupModel.llmModelID = newConfig.llm.modelID
+        dictionaryModel.entries = newConfig.dictionary.entries
         LoginItem.apply(newConfig.launchAtLogin)
         hotkeys.unregisterAll()
         registerHotkeys()
@@ -186,7 +177,6 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         menu.addItem(.separator())
         menu.addItem(menuItem("Open SaidDone…", #selector(openMainWindow), symbol: "macwindow"))
-        menu.addItem(menuItem("Settings…", #selector(openSettings), symbol: "gearshape"))
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit SaidDone", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu

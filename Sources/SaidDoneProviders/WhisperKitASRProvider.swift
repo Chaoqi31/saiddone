@@ -18,9 +18,18 @@ public actor WhisperKitASRProvider: ASRProvider {
     }
 
     private func loadIfNeeded() async throws {
-        if pipe == nil {
-            pipe = try await WhisperKit(WhisperKitConfig(model: modelName))
-        }
+        guard pipe == nil else { return }
+        // Load from the already-downloaded local folder with download:false so it never touches the
+        // network (a VPN/proxy breaking TLS to huggingface.co would otherwise fail the load). Only
+        // hit the network on a genuine first run when the model isn't present yet.
+        let local = URL.documentsDirectory
+            .appending(path: "huggingface/models/argmaxinc/whisperkit-coreml", directoryHint: .isDirectory)
+            .appending(path: modelName, directoryHint: .isDirectory)
+        let hasModel = FileManager.default.fileExists(atPath: local.appendingPathComponent("AudioEncoder.mlmodelc").path)
+        let config = hasModel
+            ? WhisperKitConfig(modelFolder: local.path, download: false)
+            : WhisperKitConfig(model: modelName)
+        pipe = try await WhisperKit(config)
     }
 
     public func transcribe(_ audio: AudioSamples, languageHint: String?) async throws -> String {

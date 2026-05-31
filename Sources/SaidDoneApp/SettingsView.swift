@@ -74,7 +74,8 @@ struct SettingsView: View {
             profiles.tabItem { Text("App Profiles") }
             SetupView(model: setup).tabItem { Text("Setup") }
         }
-        .frame(width: 480, height: 420)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, 4)
         .onDisappear { model.save() }
     }
 
@@ -102,8 +103,6 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
                 TextEditor(text: $model.config.userProfile).font(.callout).frame(height: 64)
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
-                Text("e.g. 我是 AI 工程师，常用 React/TypeScript/Vercel，说话中英夹杂，保留英文技术术语原样。")
-                    .font(.caption2).foregroundStyle(.secondary)
             }
             Divider()
             Toggle("Launch at login", isOn: $model.config.launchAtLogin)

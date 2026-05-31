@@ -83,13 +83,13 @@ final class DictionaryModel: ObservableObject {
 }
 
 enum Pane: String, CaseIterable, Identifiable {
-    case home, history, dictionary
+    case home, history, dictionary, settings
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
     var icon: String {
         switch self {
         case .home: return "house"; case .history: return "clock"
-        case .dictionary: return "character.book.closed"
+        case .dictionary: return "character.book.closed"; case .settings: return "gearshape"
         }
     }
 }
@@ -102,6 +102,8 @@ func copyToClipboard(_ text: String) {
 struct MainView: View {
     @ObservedObject var history: HistoryModel
     @ObservedObject var dictionary: DictionaryModel
+    @ObservedObject var config: ConfigModel
+    @ObservedObject var setup: SetupModel
     @State private var pane: Pane? = .home
 
     var body: some View {
@@ -115,6 +117,7 @@ struct MainView: View {
             case .home: HomePane(history: history, go: { pane = $0 })
             case .history: HistoryPane(model: history)
             case .dictionary: DictionaryPane(model: dictionary)
+            case .settings: SettingsView(model: config, setup: setup)
             }
         }
         .frame(minWidth: 820, minHeight: 560)   // no ideal -> panes don't drive window resizing
