@@ -96,6 +96,7 @@ struct SettingsView: View {
             Divider()
             HotkeyRecorder(label: "Dictation shortcut", hotkey: $model.config.dictationHotkey)
             HotkeyRecorder(label: "Translation shortcut", hotkey: $model.config.translationHotkey)
+            HotkeyRecorder(label: "Rewrite shortcut", hotkey: $model.config.rewriteHotkey)
             Divider()
             VStack(alignment: .leading, spacing: 3) {
                 Text("Personalization").font(.subheadline.weight(.medium))

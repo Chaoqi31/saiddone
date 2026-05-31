@@ -384,7 +384,7 @@ private struct HistoryPane: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(e.text).textSelection(.enabled)
             HStack(spacing: 8) {
-                Text(e.mode == "translation" ? "翻译" : "听写")
+                Text(e.mode == "translation" ? "翻译" : e.mode == "rewrite" ? "改写" : "听写")
                     .font(.caption2).padding(.horizontal, 6).padding(.vertical, 1)
                     .background(.quaternary, in: Capsule())
                 Text(e.date.formatted(date: .omitted, time: .shortened))

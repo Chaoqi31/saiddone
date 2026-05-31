@@ -44,15 +44,25 @@ enum InsertionService {
         }
     }
 
-    private static func synthesizeCommandV() {
+    private static func synthesizeCommandV() { synthesizeCmd(CGKeyCode(kVK_ANSI_V)) }
+
+    private static func synthesizeCmd(_ key: CGKeyCode) {
         let source = CGEventSource(stateID: .combinedSessionState)
-        let vKey = CGKeyCode(kVK_ANSI_V)
-        let down = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: true)
+        let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true)
         down?.flags = .maskCommand
-        let up = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
+        let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false)
         up?.flags = .maskCommand
         let loc = CGEventTapLocation.cghidEventTap
         down?.post(tap: loc)
         up?.post(tap: loc)
+    }
+
+    /// Copy the current selection (⌘C) and return it — for Rewrite Mode. Requires Accessibility.
+    static func grabSelection() -> String {
+        guard AXIsProcessTrusted() else { return "" }
+        let pb = NSPasteboard.general
+        synthesizeCmd(CGKeyCode(kVK_ANSI_C))
+        RunLoop.current.run(until: Date().addingTimeInterval(0.18))   // let the copy land
+        return pb.string(forType: .string) ?? ""
     }
 }

@@ -39,6 +39,7 @@ public struct CloudConfig: Codable, Sendable, Equatable {
 public struct AppConfig: Codable, Sendable {
     public var dictationHotkey: Hotkey
     public var translationHotkey: Hotkey
+    public var rewriteHotkey: Hotkey
     public var targetLanguage: String
     /// Primary spoken language for ASR (e.g. "zh", "en"); nil = auto-detect. Code-switch transcription
     /// works best when this matches your primary language (WhisperKit auto-detect is unreliable for mixing).
@@ -64,6 +65,7 @@ public struct AppConfig: Codable, Sendable {
     public init(
         dictationHotkey: Hotkey,
         translationHotkey: Hotkey,
+        rewriteHotkey: Hotkey,
         targetLanguage: String = "en",
         asrLanguage: String? = "zh",
         asr: ProviderSelection,
@@ -85,6 +87,7 @@ public struct AppConfig: Codable, Sendable {
         self.userProfile = userProfile
         self.dictationHotkey = dictationHotkey
         self.translationHotkey = translationHotkey
+        self.rewriteHotkey = rewriteHotkey
         self.targetLanguage = targetLanguage
         self.asrLanguage = asrLanguage
         self.asr = asr
@@ -99,6 +102,8 @@ public struct AppConfig: Codable, Sendable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         dictationHotkey = try c.decode(Hotkey.self, forKey: .dictationHotkey)
         translationHotkey = try c.decode(Hotkey.self, forKey: .translationHotkey)
+        rewriteHotkey = try c.decodeIfPresent(Hotkey.self, forKey: .rewriteHotkey)
+            ?? Hotkey(keyCode: 15, modifiers: 0x040000 | 0x080000)
         targetLanguage = try c.decodeIfPresent(String.self, forKey: .targetLanguage) ?? "en"
         asrLanguage = try c.decodeIfPresent(String.self, forKey: .asrLanguage)
         asr = try c.decode(ProviderSelection.self, forKey: .asr)
@@ -118,6 +123,7 @@ public struct AppConfig: Codable, Sendable {
     public static let `default` = AppConfig(
         dictationHotkey: Hotkey(keyCode: 2, modifiers: 0x040000 | 0x080000),   // ⌃⌥ + D
         translationHotkey: Hotkey(keyCode: 17, modifiers: 0x040000 | 0x080000), // ⌃⌥ + T
+        rewriteHotkey: Hotkey(keyCode: 15, modifiers: 0x040000 | 0x080000),    // ⌃⌥ + R
         asr: ProviderSelection(location: .local, modelID: "qwen3-asr-1.7b"),
         llm: ProviderSelection(location: .local, modelID: "qwen3.5-0.8b")
     )

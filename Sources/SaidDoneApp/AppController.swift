@@ -168,7 +168,9 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func refreshUI() {
         let menu = NSMenu()
         if let mode = activeMode {
-            let label: String = { if case .translation = mode { return "Translation" } else { return "Dictation" } }()
+            let label: String = {
+                switch mode { case .translation: return "Translation"; case .rewrite: return "Rewrite"; default: return "Dictation" }
+            }()
             menu.addItem(menuItem("Stop & Insert — \(label)", #selector(stopAndInsert), symbol: "stop.circle.fill"))
             menu.addItem(menuItem("Cancel (discard)", #selector(cancelRecording), symbol: "xmark.circle"))
         } else if isWorking {
@@ -177,6 +179,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         } else {
             menu.addItem(menuItem("Start Dictation        ⌃⌥D", #selector(toggleDictation), symbol: "mic"))
             menu.addItem(menuItem("Start Translation     ⌃⌥T", #selector(toggleTranslation), symbol: "globe"))
+            menu.addItem(menuItem("Start Rewrite          ⌃⌥R", #selector(toggleRewrite), symbol: "wand.and.stars"))
         }
         menu.addItem(.separator())
         menu.addItem(menuItem("Open SaidDone…", #selector(openMainWindow), symbol: "macwindow"))
@@ -240,8 +243,11 @@ final class AppController: NSObject, NSApplicationDelegate {
         if hotkeys.register(config.translationHotkey, onPress: { [weak self] in
             self?.toggle(.translation(target: self?.config.targetLanguage ?? "en"))
         }) { n += 1 }
+        if hotkeys.register(config.rewriteHotkey, onPress: { [weak self] in self?.toggle(.rewrite) }) { n += 1 }
         return n
     }
+
+    @objc private func toggleRewrite() { toggle(.rewrite) }
 
     @objc private func toggleDictation() { toggle(.dictation) }
     @objc private func toggleTranslation() { toggle(.translation(target: config.targetLanguage)) }
@@ -259,7 +265,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         do {
             try capture.start()
             activeMode = mode
-            let label: String = { if case .translation = mode { return "Translating" } else { return "Recording" } }()
+            let label: String = {
+                switch mode { case .translation: return "Translating"; case .rewrite: return "Rewrite — speak instruction"; default: return "Recording" }
+            }()
             overlay.show(label: label)
             if config.soundsEnabled { SoundFx.start() }
             if config.muteAudioWhileRecording { SystemAudio.setMuted(true) }
@@ -312,12 +320,22 @@ final class AppController: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             defer { self.isWorking = false; self.refreshUI() }
             do {
-                let result = try await orch.run(audio, mode: mode, context: context,
+                let result: PipelineResult
+                if case .rewrite = mode {
+                    let instruction = try await self.asr.transcribe(audio.trimmedSilence(), languageHint: self.config.asrLanguage)
+                    let selection = InsertionService.grabSelection()
+                    let out = try await self.llm.rewrite(instruction, selection: selection, context: context)
+                    result = PipelineResult(text: out, rawTranscript: "[rewrite] " + instruction, elapsed: 0)
+                } else {
+                    result = try await orch.run(audio, mode: mode, context: context,
                                                 languageHint: self.config.asrLanguage)
+                }
                 slog("RAW: '\(result.rawTranscript)'")
                 slog("pipeline done -> '\(result.text)' (\(String(format: "%.2f", result.elapsed))s)")
                 // Save to history BEFORE inserting, so text is recoverable even if paste fails.
-                let modeStr: String = { if case .translation = mode { return "translation" } else { return "dictation" } }()
+                let modeStr: String = {
+                    switch mode { case .translation: return "translation"; case .rewrite: return "rewrite"; default: return "dictation" }
+                }()
                 let id = UUID()
                 var audioFile: String? = nil
                 if !audio.samples.isEmpty {

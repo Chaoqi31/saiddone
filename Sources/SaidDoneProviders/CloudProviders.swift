@@ -29,6 +29,12 @@ public struct CloudLLMProvider: LLMProvider {
         return try await chat(system: sys, user: text)
     }
 
+    public func rewrite(_ instruction: String, selection: String, context: PolishContext) async throws -> String {
+        let sys = "你是文本改写助手。根据用户的指令改写【原文】；若【原文】为空，则按指令直接生成。中文用简体。只输出结果，不要解释、不要引号。"
+        let user = selection.isEmpty ? "指令：\(instruction)" : "指令：\(instruction)\n\n【原文】：\(selection)"
+        return try await chat(system: sys, user: user)
+    }
+
     private func chat(system: String, user: String) async throws -> String {
         guard !apiKey.isEmpty else { throw ProviderError.notConfigured("cloud LLM API key missing") }
         var req = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))

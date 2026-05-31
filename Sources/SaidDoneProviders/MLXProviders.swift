@@ -95,4 +95,10 @@ public actor MLXQwenLLMProvider: LLMProvider {
             + "Reply with ONLY the translation — no preamble, no explanation, no quotes, no original text."
         return try await run(instructions: sys, prompt: text)
     }
+
+    public func rewrite(_ instruction: String, selection: String, context: PolishContext) async throws -> String {
+        let sys = "你是文本改写助手。根据指令改写【原文】，若原文为空则按指令生成。中文用简体。只输出结果，不要解释、不要引号。"
+        let prompt = selection.isEmpty ? "指令：\(instruction)" : "指令：\(instruction)\n\n【原文】：\(selection)"
+        return try await run(instructions: sys, prompt: prompt)
+    }
 }

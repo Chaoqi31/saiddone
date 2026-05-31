@@ -38,6 +38,14 @@ public protocol LLMProvider: Sendable {
     func polish(_ text: String, context: PolishContext) async throws -> String
     /// Translate into `targetLanguage` (e.g. "en", "zh"). Used by Translation Mode (GOALS A4).
     func translate(_ text: String, to targetLanguage: String, context: PolishContext) async throws -> String
+    /// Rewrite `selection` per a spoken `instruction` (Rewrite Mode). Empty selection = generate from the instruction.
+    func rewrite(_ instruction: String, selection: String, context: PolishContext) async throws -> String
+}
+
+public extension LLMProvider {
+    func rewrite(_ instruction: String, selection: String, context: PolishContext) async throws -> String {
+        throw ProviderError.notConfigured("rewrite needs an MLX or Cloud LLM")
+    }
 }
 
 // MARK: - Errors
