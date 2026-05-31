@@ -70,6 +70,14 @@ final class AppController: NSObject, NSApplicationDelegate {
             _ = await Permissions.requestMicrophone()
             await prewarm()
         }
+        // Show the window on launch unless started as a login item (then stay in the background).
+        if !config.launchAtLogin { openMainWindow() }
+    }
+
+    /// Clicking the app icon in Launchpad/Finder while it's already running re-opens the window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        openMainWindow()
+        return true
     }
 
     // MARK: UI
