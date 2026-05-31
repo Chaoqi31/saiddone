@@ -83,7 +83,9 @@ public actor MLXQwenLLMProvider: LLMProvider {
     public func polish(_ text: String, context: PolishContext) async throws -> String {
         let tone = context.tonePrompt.map { "\($0) " } ?? ""
         let sys = tone + "You clean up dictated text. Fix punctuation, remove filler words and repeats, "
-            + "keep the original language, meaning, and technical terms. Reply with ONLY the cleaned text — no preamble, no explanation, no quotes."
+            + "keep the original language, meaning, and technical terms. "
+            + "If the speaker corrected themselves mid-sentence (said something, then restated it), keep ONLY the final intended version. "
+            + "Reply with ONLY the cleaned text — no preamble, no explanation, no quotes."
         return try await run(instructions: sys, prompt: text)
     }
 
