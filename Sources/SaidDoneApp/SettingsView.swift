@@ -110,6 +110,7 @@ struct SettingsView: View {
             Toggle("Keep result on clipboard (auto-copy)", isOn: $model.config.autoCopyToClipboard)
             Toggle("Recording sounds", isOn: $model.config.soundsEnabled)
             Toggle("Mute system audio while recording", isOn: $model.config.muteAudioWhileRecording)
+            Toggle("Voice commands (say \"换行\"/\"new line\" to break lines)", isOn: $model.config.voiceCommandsEnabled)
             Divider()
             HStack {
                 Button("Export Settings…") { model.export() }

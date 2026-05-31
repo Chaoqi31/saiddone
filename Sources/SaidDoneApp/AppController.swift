@@ -38,6 +38,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         let m = SetupModel()
         m.llmModelID = config.llm.modelID
         m.onPrepare = { [weak self] in await self?.prewarm() }
+        m.onDownloadASR = { progress in try await ModelDownloader.downloadWhisper(progress: progress) }
         return m
     }()
     private lazy var dictionaryModel = DictionaryModel(
@@ -332,6 +333,7 @@ final class AppController: NSObject, NSApplicationDelegate {
                 }
                 slog("RAW: '\(result.rawTranscript)'")
                 slog("pipeline done -> '\(result.text)' (\(String(format: "%.2f", result.elapsed))s)")
+                let finalText = self.config.voiceCommandsEnabled ? VoiceCommands.apply(result.text) : result.text
                 // Save to history BEFORE inserting, so text is recoverable even if paste fails.
                 let modeStr: String = {
                     switch mode { case .translation: return "translation"; case .rewrite: return "rewrite"; default: return "dictation" }
@@ -344,9 +346,9 @@ final class AppController: NSObject, NSApplicationDelegate {
                     if (try? audio.wavData().write(to: self.historyStore.audioURL(name))) != nil { audioFile = name }
                 }
                 self.historyStore.append(HistoryEntry(id: id, date: Date(), mode: modeStr,
-                                                      raw: result.rawTranscript, text: result.text, audioFile: audioFile))
+                                                      raw: result.rawTranscript, text: finalText, audioFile: audioFile))
                 self.historyModel.refresh()
-                InsertionService.insert(result.text, autoCopy: self.config.autoCopyToClipboard)
+                InsertionService.insert(finalText, autoCopy: self.config.autoCopyToClipboard)
                 if self.config.soundsEnabled { SoundFx.done() }
                 self.overlay.hide()
             } catch {

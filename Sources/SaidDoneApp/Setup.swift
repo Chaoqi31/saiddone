@@ -13,8 +13,23 @@ final class SetupModel: ObservableObject {
     @Published var busy = false
     @Published var status = ""
 
+    @Published var downloadProgress: Double?
     var llmModelID: String = ""
     var onPrepare: (() async -> Void)?
+    var onDownloadASR: ((@escaping @Sendable (Double) -> Void) async throws -> Void)?
+
+    func downloadASR() {
+        busy = true; downloadProgress = 0; status = "Downloading speech model…"
+        Task {
+            do {
+                try await onDownloadASR? { p in Task { @MainActor in self.downloadProgress = p } }
+                status = "Speech model ready"
+            } catch {
+                status = "Download failed — check network / HuggingFace access"
+            }
+            busy = false; downloadProgress = nil; refresh()
+        }
+    }
 
     func refresh() {
         micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
@@ -52,6 +67,13 @@ struct SetupView: View {
             }
             section("Models (on-device)") {
                 row("Speech (WhisperKit)", model.asrReady, nil)
+                if !model.asrReady {
+                    HStack {
+                        Button(model.busy ? "Downloading…" : "Download speech model") { model.downloadASR() }
+                            .disabled(model.busy)
+                        if let p = model.downloadProgress { ProgressView(value: p).frame(width: 160) }
+                    }
+                }
                 row("LLM (\(model.llmModelID.isEmpty ? "local" : model.llmModelID))", model.llmReady, nil)
                 if !model.llmReady {
                     Text("Missing LLM → run `scripts/get-models.sh` to download, or it falls back to rule-based polish.")

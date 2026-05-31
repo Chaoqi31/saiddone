@@ -56,6 +56,8 @@ public struct AppConfig: Codable, Sendable {
     public var soundsEnabled: Bool
     /// Mute system audio output while recording (so playing media doesn't bleed into the mic).
     public var muteAudioWhileRecording: Bool
+    /// Honor spoken editing commands like "换行"/"newline" (off by default — can clash with normal speech).
+    public var voiceCommandsEnabled: Bool
     /// Opt-in cloud endpoints (used when a provider's location is .cloud and a key is set).
     public var cloud: CloudConfig
     /// Personalization: the user's background/profession/jargon, fed to the Polish LLM (like
@@ -76,6 +78,7 @@ public struct AppConfig: Codable, Sendable {
         autoCopyToClipboard: Bool = false,
         soundsEnabled: Bool = true,
         muteAudioWhileRecording: Bool = false,
+        voiceCommandsEnabled: Bool = false,
         cloud: CloudConfig = .init(),
         userProfile: String = ""
     ) {
@@ -83,6 +86,7 @@ public struct AppConfig: Codable, Sendable {
         self.autoCopyToClipboard = autoCopyToClipboard
         self.soundsEnabled = soundsEnabled
         self.muteAudioWhileRecording = muteAudioWhileRecording
+        self.voiceCommandsEnabled = voiceCommandsEnabled
         self.cloud = cloud
         self.userProfile = userProfile
         self.dictationHotkey = dictationHotkey
@@ -114,6 +118,7 @@ public struct AppConfig: Codable, Sendable {
         autoCopyToClipboard = try c.decodeIfPresent(Bool.self, forKey: .autoCopyToClipboard) ?? false
         soundsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundsEnabled) ?? true
         muteAudioWhileRecording = try c.decodeIfPresent(Bool.self, forKey: .muteAudioWhileRecording) ?? false
+        voiceCommandsEnabled = try c.decodeIfPresent(Bool.self, forKey: .voiceCommandsEnabled) ?? false
         cloud = try c.decodeIfPresent(CloudConfig.self, forKey: .cloud) ?? .init()
         userProfile = try c.decodeIfPresent(String.self, forKey: .userProfile) ?? ""
     }
