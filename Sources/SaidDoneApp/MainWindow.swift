@@ -125,7 +125,7 @@ struct MainView: View {
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
         } detail: {
             switch pane ?? .home {
-            case .home: HomePane(history: history, go: { pane = $0 })
+            case .home: HomePane(history: history, setup: setup, go: { pane = $0 })
             case .history: HistoryPane(model: history)
             case .dictionary: DictionaryPane(model: dictionary)
             case .settings: SettingsView(model: config, setup: setup)
@@ -177,6 +177,7 @@ private struct DictionaryPane: View {
 
 private struct HomePane: View {
     @ObservedObject var history: HistoryModel
+    @ObservedObject var setup: SetupModel
     var go: (Pane) -> Void
 
     var body: some View {
@@ -190,6 +191,13 @@ private struct HomePane: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("SaidDone").font(.largeTitle.bold())
                         Text("Local-first voice-to-text").foregroundStyle(.secondary)
+                    }
+                }
+
+                if !setup.micGranted || !setup.axGranted {
+                    card("Finish setup", icon: "exclamationmark.triangle.fill") {
+                        if !setup.micGranted { permRow("Microphone — needed to record", "Privacy_Microphone") }
+                        if !setup.axGranted { permRow("Accessibility — needed to paste at cursor", "Privacy_Accessibility") }
                     }
                 }
 
@@ -229,9 +237,35 @@ private struct HomePane: View {
                             .buttonStyle(.borderless).font(.callout)
                     }
                 }
-                Spacer(minLength: 0)
+                Spacer(minLength: 8)
+                aboutFooter
             }
             .padding(24)
+        }
+        .onAppear { setup.refresh() }
+    }
+
+    private var aboutFooter: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "waveform").foregroundStyle(.secondary)
+            Text("SaidDone \(appVersion) · local-first, open-source (MIT)")
+                .font(.caption2).foregroundStyle(.secondary)
+            Spacer()
+        }
+    }
+
+    private var appVersion: String {
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.1.0"
+    }
+
+    private func permRow(_ label: String, _ pane: String) -> some View {
+        HStack {
+            Image(systemName: "circle.badge.exclamationmark").foregroundStyle(.orange)
+            Text(label)
+            Spacer()
+            Button("Grant") {
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")!)
+            }.controlSize(.small)
         }
     }
 
