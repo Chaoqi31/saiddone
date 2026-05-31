@@ -1,5 +1,6 @@
 import AppKit
 import SaidDoneCore
+import SaidDoneProviders
 
 /// Menu-bar controller: owns config, capture, hotkeys, providers; runs the toggle record loop.
 @MainActor
@@ -13,14 +14,18 @@ final class AppController: NSObject, NSApplicationDelegate {
     /// Which Mode is currently recording, nil = idle. Toggle (ADR-0006).
     private var activeMode: Mode?
 
-    // Providers. Default = local Echo placeholders until real engines (WhisperKit/MLX) are wired.
-    private var asr: ASRProvider = EchoASRProvider(preset: "")
-    private var llm: LLMProvider = EchoLLMProvider()
+    // Providers built from config: local ASR ladder (Qwen3-ASR→0.6B→WhisperKit) + LLM ladder (MLX→RuleBased).
+    private var asr: ASRProvider
+    private var llm: LLMProvider
 
     override init() {
         let dir = (try? ConfigStore.defaultDirectory()) ?? FileManager.default.temporaryDirectory
-        self.configStore = ConfigStore(directory: dir)
-        self.config = configStore.load()
+        let store = ConfigStore(directory: dir)
+        let cfg = store.load()
+        self.configStore = store
+        self.config = cfg
+        self.asr = ProviderFactory.makeASR(cfg)
+        self.llm = ProviderFactory.makeLLM(cfg)
         super.init()
     }
 

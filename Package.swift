@@ -8,17 +8,26 @@ let package = Package(
         .library(name: "SaidDoneCore", targets: ["SaidDoneCore"]),
         .executable(name: "SaidDone", targets: ["SaidDoneApp"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "1.0.0"),
+    ],
     targets: [
-        // Pure logic: protocols, pipeline, dictionary, profiles, config. No external deps -> fast, testable, offline.
+        // Pure logic: protocols, pipeline, dictionary, profiles, config, rule-based polish. No external deps.
         .target(name: "SaidDoneCore"),
-        // Menu-bar app shell: capture, hotkey, insertion, UI. System frameworks only for now.
+        // Concrete Providers (real engines + scaffolds + ladder + factory).
+        .target(
+            name: "SaidDoneProviders",
+            dependencies: [
+                "SaidDoneCore",
+                .product(name: "WhisperKit", package: "WhisperKit"),
+            ]
+        ),
+        // Menu-bar app shell: capture, hotkey, insertion, UI.
         .executableTarget(
             name: "SaidDoneApp",
-            dependencies: ["SaidDoneCore"]
+            dependencies: ["SaidDoneCore", "SaidDoneProviders"]
         ),
-        .testTarget(
-            name: "SaidDoneCoreTests",
-            dependencies: ["SaidDoneCore"]
-        ),
+        .testTarget(name: "SaidDoneCoreTests", dependencies: ["SaidDoneCore"]),
+        .testTarget(name: "SaidDoneProvidersTests", dependencies: ["SaidDoneProviders"]),
     ]
 )
