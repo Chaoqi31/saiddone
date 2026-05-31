@@ -16,6 +16,9 @@ final class AudioCapture: @unchecked Sendable {
     private var collected: [Float] = []
     private(set) var isRecording = false
 
+    /// Called on the audio thread with the current RMS level (0…~1) for live UI feedback.
+    var onLevel: (@Sendable (Float) -> Void)?
+
     func start() throws {
         lock.withLock { collected.removeAll(keepingCapacity: true) }
 
@@ -62,5 +65,11 @@ final class AudioCapture: @unchecked Sendable {
         let frames = Int(out.frameLength)
         let slice = Array(UnsafeBufferPointer(start: ch[0], count: frames))
         lock.withLock { collected.append(contentsOf: slice) }
+
+        if let onLevel, frames > 0 {
+            var sum: Float = 0
+            for v in slice { sum += v * v }
+            onLevel(min(1, sqrt(sum / Float(frames)) * 4))  // RMS, scaled for display
+        }
     }
 }

@@ -15,11 +15,13 @@ final class HistoryModel: ObservableObject {
 /// The real app window: Home (status + how-to) and History (recover text that didn't land).
 struct MainView: View {
     @ObservedObject var history: HistoryModel
+    @ObservedObject var setup: SetupModel
 
     var body: some View {
         TabView {
             home.tabItem { Label("Home", systemImage: "house") }
             historyTab.tabItem { Label("History", systemImage: "clock") }
+            SetupView(model: setup).tabItem { Label("Setup", systemImage: "checklist") }
         }
         .frame(width: 560, height: 460)
     }

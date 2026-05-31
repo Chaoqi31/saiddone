@@ -7,7 +7,7 @@ import Carbon.HIToolbox
 /// Requires Accessibility permission (for CGEvent posting).
 @MainActor
 enum InsertionService {
-    static func insert(_ text: String) {
+    static func insert(_ text: String, autoCopy: Bool = false) {
         guard !text.isEmpty else { return }
         let trusted = AXIsProcessTrusted()
         let front = NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
@@ -36,6 +36,8 @@ enum InsertionService {
         slog("insert: ⌘V posted")
 
         // Restore after the paste is delivered (longer delay avoids racing the paste).
+        // autoCopy = leave the inserted text on the clipboard instead of restoring.
+        guard !autoCopy else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             pasteboard.clearContents()
             if let saved, !saved.isEmpty { pasteboard.writeObjects(saved) }

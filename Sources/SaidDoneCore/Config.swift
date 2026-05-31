@@ -33,6 +33,10 @@ public struct AppConfig: Codable, Sendable {
     public var llm: ProviderSelection
     public var dictionary: CustomDictionary
     public var appProfiles: AppProfileStore
+    /// Start SaidDone at login (SMAppService).
+    public var launchAtLogin: Bool
+    /// Leave the inserted text on the clipboard afterwards (don't restore the previous clipboard).
+    public var autoCopyToClipboard: Bool
 
     public init(
         dictationHotkey: Hotkey,
@@ -42,8 +46,12 @@ public struct AppConfig: Codable, Sendable {
         asr: ProviderSelection,
         llm: ProviderSelection,
         dictionary: CustomDictionary = .init(),
-        appProfiles: AppProfileStore = .init()
+        appProfiles: AppProfileStore = .init(),
+        launchAtLogin: Bool = false,
+        autoCopyToClipboard: Bool = false
     ) {
+        self.launchAtLogin = launchAtLogin
+        self.autoCopyToClipboard = autoCopyToClipboard
         self.dictationHotkey = dictationHotkey
         self.translationHotkey = translationHotkey
         self.targetLanguage = targetLanguage
@@ -52,6 +60,22 @@ public struct AppConfig: Codable, Sendable {
         self.llm = llm
         self.dictionary = dictionary
         self.appProfiles = appProfiles
+    }
+
+    /// Lenient decode: missing keys fall back to defaults so adding config fields never wipes a
+    /// user's existing config.json.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        dictationHotkey = try c.decode(Hotkey.self, forKey: .dictationHotkey)
+        translationHotkey = try c.decode(Hotkey.self, forKey: .translationHotkey)
+        targetLanguage = try c.decodeIfPresent(String.self, forKey: .targetLanguage) ?? "en"
+        asrLanguage = try c.decodeIfPresent(String.self, forKey: .asrLanguage)
+        asr = try c.decode(ProviderSelection.self, forKey: .asr)
+        llm = try c.decode(ProviderSelection.self, forKey: .llm)
+        dictionary = try c.decodeIfPresent(CustomDictionary.self, forKey: .dictionary) ?? .init()
+        appProfiles = try c.decodeIfPresent(AppProfileStore.self, forKey: .appProfiles) ?? .init()
+        launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
+        autoCopyToClipboard = try c.decodeIfPresent(Bool.self, forKey: .autoCopyToClipboard) ?? false
     }
 
     /// Zero-key local defaults (GOALS B4). Hotkeys: ⌃⌥D (dictation), ⌃⌥T (translation) — avoid

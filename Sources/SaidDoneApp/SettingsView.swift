@@ -1,4 +1,6 @@
 import SwiftUI
+import AppKit
+import UniformTypeIdentifiers
 import SaidDoneCore
 
 /// Editable view-model over AppConfig. `onSave` persists + lets the controller rebuild providers.
@@ -13,6 +15,50 @@ final class ConfigModel: ObservableObject {
     }
 
     func save() { onSave(config) }
+
+    func export() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "saiddone-config.json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try? enc.encode(config).write(to: url)
+    }
+
+    func importConfig() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = try? Data(contentsOf: url),
+              let cfg = try? JSONDecoder().decode(AppConfig.self, from: data) else { return }
+        config = cfg
+        save()
+    }
+
+    func exportDictionary() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "saiddone-dictionary.json"
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted]
+        try? enc.encode(config.dictionary.entries).write(to: url)
+    }
+
+    func importDictionary() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url,
+              let data = try? Data(contentsOf: url),
+              let entries = try? JSONDecoder().decode([DictionaryEntry].self, from: data) else { return }
+        // Merge, de-duplicating by `wrong`.
+        var byKey = Dictionary(config.dictionary.entries.map { ($0.wrong, $0) }) { a, _ in a }
+        for e in entries { byKey[e.wrong] = e }
+        config.dictionary.entries = byKey.values.sorted { $0.wrong < $1.wrong }
+        save()
+    }
 }
 
 /// Minimal v1 Settings: target language, provider location/model, Custom Dictionary, App Profiles.
@@ -46,6 +92,14 @@ struct SettingsView: View {
             TextField("Translation target language", text: $model.config.targetLanguage)
             Text("Dictation: ⌃⌥D · Translation: ⌃⌥T")
                 .font(.caption).foregroundStyle(.secondary)
+            Divider()
+            Toggle("Launch at login", isOn: $model.config.launchAtLogin)
+            Toggle("Keep result on clipboard (auto-copy)", isOn: $model.config.autoCopyToClipboard)
+            Divider()
+            HStack {
+                Button("Export Settings…") { model.export() }
+                Button("Import Settings…") { model.importConfig() }
+            }
         }.padding()
     }
 
@@ -77,8 +131,11 @@ struct SettingsView: View {
                 }
                 .onDelete { model.config.dictionary.entries.remove(atOffsets: $0) }
             }
-            Button("Add term") {
-                model.config.dictionary.entries.append(.init(wrong: "", right: ""))
+            HStack {
+                Button("Add term") { model.config.dictionary.entries.append(.init(wrong: "", right: "")) }
+                Spacer()
+                Button("Import…") { model.importDictionary() }
+                Button("Export…") { model.exportDictionary() }
             }
         }.padding()
     }

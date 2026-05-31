@@ -33,6 +33,13 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var llm: LLMProvider
     private let historyStore: HistoryStore
     private lazy var historyModel = HistoryModel(store: historyStore)
+    private let overlay = RecordingOverlay()
+    private lazy var setupModel: SetupModel = {
+        let m = SetupModel()
+        m.llmModelID = config.llm.modelID
+        m.onPrepare = { [weak self] in await self?.prewarm() }
+        return m
+    }()
 
     override init() {
         let dir = (try? ConfigStore.defaultDirectory()) ?? FileManager.default.temporaryDirectory
@@ -51,6 +58,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         let n = registerHotkeys()
         slog("launched, \(n) hotkeys registered")
         Permissions.accessibilityTrusted(prompt: true)
+        LoginItem.apply(config.launchAtLogin)
         Task {
             _ = await Permissions.requestMicrophone()
             await prewarm()
@@ -83,7 +91,8 @@ final class AppController: NSObject, NSApplicationDelegate {
             return
         }
         historyModel.refresh()
-        let win = NSWindow(contentViewController: NSHostingController(rootView: MainView(history: historyModel)))
+        setupModel.refresh()
+        let win = NSWindow(contentViewController: NSHostingController(rootView: MainView(history: historyModel, setup: setupModel)))
         win.title = "SaidDone"
         win.styleMask = [.titled, .closable, .miniaturizable]
         win.isReleasedWhenClosed = false
@@ -118,6 +127,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         try? configStore.save(newConfig)
         asr = ProviderFactory.makeASR(newConfig)
         llm = ProviderFactory.makeLLM(newConfig)
+        setupModel.llmModelID = newConfig.llm.modelID
+        LoginItem.apply(newConfig.launchAtLogin)
     }
 
     /// Rebuild menu + icon for current state. Recording shows explicit Stop / Cancel.
@@ -149,6 +160,8 @@ final class AppController: NSObject, NSApplicationDelegate {
     @objc private func cancelRecording() {
         guard activeMode != nil else { return }
         _ = capture.stop()
+        capture.onLevel = nil
+        overlay.hide()
         activeMode = nil
         slog("recording cancelled")
         refreshUI()
@@ -189,12 +202,16 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     private func startRecording(_ mode: Mode) {
+        capture.onLevel = { [weak self] lvl in DispatchQueue.main.async { self?.overlay.updateLevel(lvl) } }
         do {
             try capture.start()
             activeMode = mode
+            let label: String = { if case .translation = mode { return "Translating" } else { return "Recording" } }()
+            overlay.show(label: label)
             slog("recording started")
             refreshUI()
         } catch {
+            capture.onLevel = nil
             slog("capture.start failed: \(error)")
             NSSound.beep()
         }
@@ -203,6 +220,8 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func finishRecording() {
         guard let mode = activeMode else { return }
         let audio = capture.stop()
+        capture.onLevel = nil
+        overlay.hide()
         activeMode = nil
         isWorking = true
         slog("recording stopped, \(String(format: "%.1f", audio.duration))s audio, running pipeline…")
@@ -225,7 +244,7 @@ final class AppController: NSObject, NSApplicationDelegate {
                 self.historyStore.append(HistoryEntry(date: Date(), mode: modeStr,
                                                       raw: result.rawTranscript, text: result.text))
                 self.historyModel.refresh()
-                InsertionService.insert(result.text)
+                InsertionService.insert(result.text, autoCopy: self.config.autoCopyToClipboard)
             } catch {
                 slog("pipeline error: \(error)")
                 NSSound.beep()
