@@ -10,3 +10,8 @@ dist/
 # internal scratch/comparison docs (not product docs)
 FEATURES.md
 STATUS.md
+GOALS.md
+CONTEXT.md
+ARCHITECTURE.md
+docs/
+audios/
