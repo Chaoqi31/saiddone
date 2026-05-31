@@ -51,8 +51,10 @@ do {
     let audio = try loadAudio(path)
     print("audio: \(String(format: "%.2f", audio.duration))s, \(audio.samples.count) samples @16k")
 
-    let asr = ProviderFactory.makeASR(.default)   // ladder: MLX(scaffold)→0.6B(scaffold)→WhisperKit
-    let llm = ProviderFactory.makeLLM(.default)   // ladder: MLX(scaffold)→RuleBased
+    var cfg = AppConfig.default
+    if let m = ProcessInfo.processInfo.environment["SAIDDONE_LLM"] { cfg.llm.modelID = m }  // e.g. mlx-community/Qwen3-1.7B-4bit
+    let asr = ProviderFactory.makeASR(cfg)   // ladder: MLX-ASR(scaffold)→0.6B(scaffold)→WhisperKit
+    let llm = ProviderFactory.makeLLM(cfg)   // RuleBased, or MLX-Qwen if SAIDDONE_LLM set
     let orch = PipelineOrchestrator(asr: asr, llm: llm)
     let mode: Mode = modeArg == "translate" ? .translation(target: lang) : .dictation
 

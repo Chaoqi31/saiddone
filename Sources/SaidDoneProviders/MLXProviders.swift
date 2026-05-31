@@ -60,22 +60,36 @@ public actor MLXQwenLLMProvider: LLMProvider {
 
     private func run(instructions: String, prompt: String) async throws -> String {
         let container = try await loaded()
-        // Greedy-ish, bounded output for a dictation-sized utterance.
-        let params = GenerateParameters(maxTokens: 512, temperature: 0.2)
-        let session = ChatSession(container, instructions: instructions, generateParameters: params)
-        let out = try await session.respond(to: prompt)
-        return out.trimmingCharacters(in: .whitespacesAndNewlines)
+        let params = GenerateParameters(maxTokens: 256, temperature: 0.0)
+        // NOTE: ChatSession.respond() overwrites messages, dropping the `instructions:` system prompt,
+        // so embed the instruction directly in the user turn. "/no_think" disables Qwen3 reasoning.
+        let session = ChatSession(container, generateParameters: params)
+        let full = "\(instructions) /no_think\n\nText:\n\(prompt)"
+        let out = try await session.respond(to: full)
+        return Self.sanitize(out)
+    }
+
+    /// Strip Qwen3 <think> blocks and surrounding markdown, leaving only the answer.
+    static func sanitize(_ raw: String) -> String {
+        var s = raw
+        if let r = s.range(of: "</think>", options: .backwards) {
+            s = String(s[r.upperBound...])
+        }
+        s = s.replacingOccurrences(of: "<think>", with: "")
+            .replacingOccurrences(of: "</think>", with: "")
+        return s.trimmingCharacters(in: CharacterSet(charactersIn: " \n\t\"*"))
     }
 
     public func polish(_ text: String, context: PolishContext) async throws -> String {
         let tone = context.tonePrompt.map { "\($0) " } ?? ""
-        let sys = tone + "Clean up the user's dictated text: fix punctuation, remove filler words and "
-            + "repeats, keep the original language and meaning and technical terms. Output ONLY the cleaned text, nothing else."
+        let sys = tone + "You clean up dictated text. Fix punctuation, remove filler words and repeats, "
+            + "keep the original language, meaning, and technical terms. Reply with ONLY the cleaned text — no preamble, no explanation, no quotes."
         return try await run(instructions: sys, prompt: text)
     }
 
     public func translate(_ text: String, to targetLanguage: String, context: PolishContext) async throws -> String {
-        let sys = "Translate the user's text into \(targetLanguage). Output ONLY the translation, no notes or quotes."
+        let sys = "You are a translator. Translate the user's text into \(targetLanguage). "
+            + "Reply with ONLY the translation — no preamble, no explanation, no quotes, no original text."
         return try await run(instructions: sys, prompt: text)
     }
 }
