@@ -1,22 +1,10 @@
 import Foundation
 import SaidDoneCore
 
-/// Opt-in cloud credentials (kept out of AppConfig JSON; load from Keychain at call sites).
-public struct CloudCredentials: Sendable {
-    public var llmKey: String
-    public var llmBaseURL: URL
-    public var llmModel: String
-    public init(llmKey: String, llmBaseURL: URL, llmModel: String) {
-        self.llmKey = llmKey
-        self.llmBaseURL = llmBaseURL
-        self.llmModel = llmModel
-    }
-}
-
 /// Builds the concrete ASR/LLM Providers for a config, wiring the ladders (ADR-0001/0003/0004).
 public enum ProviderFactory {
-    /// Local ASR ladder: Qwen3-ASR-1.7B → 0.6B → WhisperKit-turbo. Cloud ASR if explicitly selected
-    /// (falls back to the local ladder when not yet wired).
+    /// Local ASR ladder: Qwen3-ASR-1.7B → 0.6B → WhisperKit-turbo. Cloud ASR (opt-in) when selected
+    /// and a key is set, with the local ladder as a safety net.
     public static func makeASR(_ config: AppConfig) -> ASRProvider {
         let local = FallbackASRProvider([
             MLXQwenASRProvider(modelID: config.asr.modelID),
@@ -27,33 +15,29 @@ public enum ProviderFactory {
         case .local:
             return local
         case .cloud:
-            // Cloud ASR scaffold not wired -> ladder ends in the working local engine.
-            return FallbackASRProvider([CloudASRProvider(apiKey: ""), local], location: .cloud)
+            guard !config.cloud.asrKey.isEmpty, let url = URL(string: config.cloud.asrBaseURL) else { return local }
+            let cloud = CloudASRProvider(apiKey: config.cloud.asrKey, baseURL: url, model: config.cloud.asrModel)
+            return FallbackASRProvider([cloud, local], location: .cloud)
         }
     }
 
-    /// Local LLM ladder: MLX-Qwen3.5 → RuleBasedLLM (Polish always has a deterministic floor).
-    /// Cloud LLM (opt-in) when selected and credentials are present.
-    public static func makeLLM(_ config: AppConfig, cloud: CloudCredentials? = nil) -> LLMProvider {
-        // MLX LLM is opt-in by an explicit "mlx-community/..." model id: it loads a model at runtime
-        // and aborts natively if MLX's metallib isn't compiled (needs full Xcode Metal toolchain).
-        // Default keeps a crash-proof local floor (RuleBasedLLM) so the app always runs.
+    /// Local LLM ladder: MLX-Qwen3.5 (only if an `mlx-community/...` id is set) → RuleBasedLLM floor.
+    /// Cloud LLM (opt-in) when selected and a key is set.
+    public static func makeLLM(_ config: AppConfig) -> LLMProvider {
         var localRungs: [LLMProvider] = []
         if config.llm.modelID.hasPrefix("mlx-community/") {
             localRungs.append(MLXQwenLLMProvider(modelID: config.llm.modelID))
         }
         localRungs.append(RuleBasedLLM())
         let local = FallbackLLMProvider(localRungs)
+
         switch config.llm.location {
         case .local:
             return local
         case .cloud:
-            if let cloud {
-                let cloudLLM = CloudLLMProvider(apiKey: cloud.llmKey, baseURL: cloud.llmBaseURL, model: cloud.llmModel)
-                // Cloud first, local floor as safety net.
-                return FallbackLLMProvider([cloudLLM, local], location: .cloud)
-            }
-            return local
+            guard !config.cloud.llmKey.isEmpty, let url = URL(string: config.cloud.llmBaseURL) else { return local }
+            let cloud = CloudLLMProvider(apiKey: config.cloud.llmKey, baseURL: url, model: config.cloud.llmModel)
+            return FallbackLLMProvider([cloud, local], location: .cloud)
         }
     }
 }

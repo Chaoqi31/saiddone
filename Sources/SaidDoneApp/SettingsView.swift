@@ -69,6 +69,7 @@ struct SettingsView: View {
         TabView {
             general.tabItem { Text("General") }
             providers.tabItem { Text("Providers") }
+            cloud.tabItem { Text("Cloud") }
             dictionary.tabItem { Text("Dictionary") }
             profiles.tabItem { Text("App Profiles") }
         }
@@ -90,8 +91,9 @@ struct SettingsView: View {
                 .font(.caption).foregroundStyle(.secondary)
             Divider()
             TextField("Translation target language", text: $model.config.targetLanguage)
-            Text("Dictation: ⌃⌥D · Translation: ⌃⌥T")
-                .font(.caption).foregroundStyle(.secondary)
+            Divider()
+            HotkeyRecorder(label: "Dictation shortcut", hotkey: $model.config.dictationHotkey)
+            HotkeyRecorder(label: "Translation shortcut", hotkey: $model.config.translationHotkey)
             Divider()
             Toggle("Launch at login", isOn: $model.config.launchAtLogin)
             Toggle("Keep result on clipboard (auto-copy)", isOn: $model.config.autoCopyToClipboard)
@@ -116,6 +118,23 @@ struct SettingsView: View {
             TextField("LLM model", text: $model.config.llm.modelID)
             Text("Local = private/offline/zero-key. Cloud = opt-in, data leaves device.")
                 .font(.caption).foregroundStyle(.secondary)
+        }.padding()
+    }
+
+    private var cloud: some View {
+        Form {
+            Text("Opt-in. Keys saved in config.json; audio/text leaves the device. Set a provider's location to Cloud (Providers tab) to use these.")
+                .font(.caption).foregroundStyle(.secondary)
+            Section("LLM — polish / translate") {
+                SecureField("API key", text: $model.config.cloud.llmKey)
+                TextField("Base URL", text: $model.config.cloud.llmBaseURL)
+                TextField("Model", text: $model.config.cloud.llmModel)
+            }
+            Section("ASR — speech (OpenAI-compatible)") {
+                SecureField("API key", text: $model.config.cloud.asrKey)
+                TextField("Base URL", text: $model.config.cloud.asrBaseURL)
+                TextField("Model", text: $model.config.cloud.asrModel)
+            }
         }.padding()
     }
 

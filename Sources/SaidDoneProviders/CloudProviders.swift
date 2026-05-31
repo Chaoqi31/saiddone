@@ -61,13 +61,74 @@ public struct CloudLLMProvider: LLMProvider {
     }
 }
 
-/// Cloud ASR scaffold (OpenAI-compatible transcription). Opt-in. Not yet implemented (multipart upload).
+/// Cloud ASR via an OpenAI-compatible `/audio/transcriptions` endpoint (multipart WAV upload).
+/// Opt-in: requires a key; audio leaves the device.
 public struct CloudASRProvider: ASRProvider {
-    public let id = "cloud-asr"
+    public let id: String
     public let location: ProviderLocation = .cloud
     let apiKey: String
-    public init(apiKey: String) { self.apiKey = apiKey }
-    public func transcribe(_ audio: AudioSamples, languageHint: String?) async throws -> String {
-        throw ProviderError.notConfigured("cloud ASR not wired yet")
+    let baseURL: URL
+    let model: String
+    let session: URLSession
+
+    public init(apiKey: String, baseURL: URL, model: String = "whisper-1", session: URLSession = .shared) {
+        self.apiKey = apiKey
+        self.baseURL = baseURL
+        self.model = model
+        self.session = session
+        self.id = "cloud-asr:\(model)"
     }
+
+    public func transcribe(_ audio: AudioSamples, languageHint: String?) async throws -> String {
+        guard !apiKey.isEmpty else { throw ProviderError.notConfigured("cloud ASR API key missing") }
+        let boundary = "saiddone-\(UInt64(audio.samples.count))-boundary"
+        var req = URLRequest(url: baseURL.appendingPathComponent("audio/transcriptions"))
+        req.httpMethod = "POST"
+        req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+
+        var body = Data()
+        func field(_ name: String, _ value: String) {
+            body.append("--\(boundary)\r\n".data(using: .utf8)!)
+            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n\(value)\r\n".data(using: .utf8)!)
+        }
+        field("model", model)
+        if let languageHint { field("language", languageHint) }
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
+        body.append(wavData(audio))
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+
+        let (data, response) = try await session.upload(for: req, from: body)
+        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw ProviderError.notConfigured("cloud ASR HTTP error")
+        }
+        if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let text = json["text"] as? String {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        throw ProviderError.notConfigured("cloud ASR: unexpected response")
+    }
+}
+
+/// Encode 16 kHz mono Float [-1,1] to 16-bit PCM WAV.
+func wavData(_ audio: AudioSamples) -> Data {
+    let sampleRate = Int(audio.sampleRate)
+    let samples = audio.samples
+    let bytesPerSample = 2
+    let dataSize = samples.count * bytesPerSample
+    var d = Data(capacity: 44 + dataSize)
+    func str(_ s: String) { d.append(s.data(using: .ascii)!) }
+    func u32(_ v: UInt32) { var x = v.littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
+    func u16(_ v: UInt16) { var x = v.littleEndian; withUnsafeBytes(of: &x) { d.append(contentsOf: $0) } }
+    str("RIFF"); u32(UInt32(36 + dataSize)); str("WAVE")
+    str("fmt "); u32(16); u16(1); u16(1)
+    u32(UInt32(sampleRate)); u32(UInt32(sampleRate * bytesPerSample)); u16(UInt16(bytesPerSample)); u16(16)
+    str("data"); u32(UInt32(dataSize))
+    for s in samples {
+        let clamped = max(-1, min(1, s))
+        u16(UInt16(bitPattern: Int16(clamped * 32767)))
+    }
+    return d
 }

@@ -129,6 +129,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         llm = ProviderFactory.makeLLM(newConfig)
         setupModel.llmModelID = newConfig.llm.modelID
         LoginItem.apply(newConfig.launchAtLogin)
+        hotkeys.unregisterAll()
+        registerHotkeys()
     }
 
     /// Rebuild menu + icon for current state. Recording shows explicit Stop / Cancel.

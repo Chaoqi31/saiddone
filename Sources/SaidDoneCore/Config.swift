@@ -20,6 +20,17 @@ public struct ProviderSelection: Codable, Sendable, Equatable {
     }
 }
 
+/// Opt-in cloud endpoints (OpenAI-compatible). Keys live in config.json — local dev tool; keep private.
+public struct CloudConfig: Codable, Sendable, Equatable {
+    public var llmKey: String = ""
+    public var llmBaseURL: String = "https://api.openai.com/v1"
+    public var llmModel: String = "gpt-4o-mini"
+    public var asrKey: String = ""
+    public var asrBaseURL: String = "https://api.openai.com/v1"
+    public var asrModel: String = "whisper-1"
+    public init() {}
+}
+
 /// Persisted app config (Config Store, ARCHITECTURE). Codable -> JSON in Application Support.
 /// Defaults encode the zero-key local path (GOALS B4) + the ADR-0003/0004 model picks.
 public struct AppConfig: Codable, Sendable {
@@ -37,6 +48,8 @@ public struct AppConfig: Codable, Sendable {
     public var launchAtLogin: Bool
     /// Leave the inserted text on the clipboard afterwards (don't restore the previous clipboard).
     public var autoCopyToClipboard: Bool
+    /// Opt-in cloud endpoints (used when a provider's location is .cloud and a key is set).
+    public var cloud: CloudConfig
 
     public init(
         dictationHotkey: Hotkey,
@@ -48,10 +61,12 @@ public struct AppConfig: Codable, Sendable {
         dictionary: CustomDictionary = .init(),
         appProfiles: AppProfileStore = .init(),
         launchAtLogin: Bool = false,
-        autoCopyToClipboard: Bool = false
+        autoCopyToClipboard: Bool = false,
+        cloud: CloudConfig = .init()
     ) {
         self.launchAtLogin = launchAtLogin
         self.autoCopyToClipboard = autoCopyToClipboard
+        self.cloud = cloud
         self.dictationHotkey = dictationHotkey
         self.translationHotkey = translationHotkey
         self.targetLanguage = targetLanguage
@@ -76,6 +91,7 @@ public struct AppConfig: Codable, Sendable {
         appProfiles = try c.decodeIfPresent(AppProfileStore.self, forKey: .appProfiles) ?? .init()
         launchAtLogin = try c.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         autoCopyToClipboard = try c.decodeIfPresent(Bool.self, forKey: .autoCopyToClipboard) ?? false
+        cloud = try c.decodeIfPresent(CloudConfig.self, forKey: .cloud) ?? .init()
     }
 
     /// Zero-key local defaults (GOALS B4). Hotkeys: ⌃⌥D (dictation), ⌃⌥T (translation) — avoid

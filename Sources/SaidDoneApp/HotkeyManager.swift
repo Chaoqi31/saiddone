@@ -38,6 +38,14 @@ final class HotkeyManager {
         return true
     }
 
+    /// Unregister all hotkeys (before re-registering after a config change).
+    func unregisterAll() {
+        for ref in refs { if let ref { UnregisterEventHotKey(ref) } }
+        refs.removeAll()
+        handlers.removeAll()
+        nextID = 1
+    }
+
     fileprivate func fire(id: UInt32) {
         handlers[id]?()
     }
