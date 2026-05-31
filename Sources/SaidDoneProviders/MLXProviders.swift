@@ -83,6 +83,7 @@ public actor MLXQwenLLMProvider: LLMProvider {
     public func polish(_ text: String, context: PolishContext) async throws -> String {
         let tone = context.tonePrompt.map { "\($0) " } ?? ""
         let sys = tone + "你是听写文本整理助手。务必做到："
+            + "⓪ 中文一律用**简体中文**输出（不要繁体）；"
             + "① 加上正确标点并合理断句——中文用，。？！，英文用 , . ? !，保证读起来有停顿、每句都收尾；"
             + "② 去掉口头禅（嗯/呃/啊/那个/就是说/um/uh/like/you know）和重复的词；"
             + "③ 若说话者中途改口（先说错再重说），只保留最终版本；"

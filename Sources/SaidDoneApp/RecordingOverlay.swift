@@ -4,11 +4,10 @@ import SwiftUI
 /// Live state for the recording overlay.
 @MainActor
 final class OverlayModel: ObservableObject {
-    @Published var level: Float = 0          // current mic level 0…1
-    @Published var levels: [Float] = Array(repeating: 0, count: 32)  // rolling waveform
-    @Published var seconds: Int = 0          // elapsed
+    @Published var level: Float = 0
+    @Published var levels: [Float] = Array(repeating: 0, count: 36)  // rolling waveform
+    @Published var seconds: Int = 0
     @Published var label: String = "Recording"
-    @Published var preview: String = ""      // live streaming transcript
 
     func pushLevel(_ v: Float) {
         level = v
@@ -16,13 +15,13 @@ final class OverlayModel: ObservableObject {
         levels.append(v)
     }
     func reset() {
-        level = 0; seconds = 0; preview = ""
-        levels = Array(repeating: 0, count: 32)
+        level = 0; seconds = 0
+        levels = Array(repeating: 0, count: 36)
     }
 }
 
-/// Floating, non-activating panel shown while recording — live waveform + streaming text preview
-/// (matches voxt's overlay). Bottom-center, click-through.
+/// Compact floating, non-activating overlay shown while recording: dot + label + timer + waveform.
+/// Bottom-center, click-through.
 @MainActor
 final class RecordingOverlay {
     let model = OverlayModel()
@@ -55,10 +54,9 @@ final class RecordingOverlay {
     }
 
     func updateLevel(_ level: Float) { model.pushLevel(level) }
-    func updatePreview(_ text: String) { model.preview = text }
 
     private func makePanel() -> NSPanel {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 320, height: 116),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 240, height: 56),
                             styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
         panel.level = .floating
         panel.isFloatingPanel = true
@@ -84,26 +82,18 @@ private struct OverlayView: View {
     @ObservedObject var model: OverlayModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Circle().fill(.red).frame(width: 9, height: 9)
-                    .opacity(model.seconds % 2 == 0 ? 1 : 0.3)
-                Text(model.label).font(.system(size: 12, weight: .semibold))
-                Spacer()
-                Text(timeString).font(.system(size: 12, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            waveform.frame(height: 22)
-            Text(model.preview.isEmpty ? "Listening…" : model.preview)
-                .font(.system(size: 12))
-                .foregroundStyle(model.preview.isEmpty ? .secondary : .primary)
-                .lineLimit(2).truncationMode(.head)
-                .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(spacing: 10) {
+            Circle().fill(.red).frame(width: 8, height: 8)
+                .opacity(model.seconds % 2 == 0 ? 1 : 0.35)
+            waveform.frame(width: 130, height: 24)
+            Spacer(minLength: 4)
+            Text(timeString).font(.system(size: 12, weight: .medium).monospacedDigit())
+                .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 14).padding(.vertical, 10)
-        .frame(width: 320, height: 116)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(.white.opacity(0.12)))
+        .padding(.horizontal, 14).padding(.vertical, 0)
+        .frame(width: 240, height: 56)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
     }
 
     private var timeString: String {
@@ -121,7 +111,7 @@ private struct OverlayView: View {
                 }
             }
             .frame(maxHeight: .infinity, alignment: .center)
-            .animation(.easeOut(duration: 0.1), value: model.levels)
+            .animation(.easeOut(duration: 0.12), value: model.levels)
         }
     }
 }

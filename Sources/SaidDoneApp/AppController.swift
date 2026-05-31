@@ -34,7 +34,6 @@ final class AppController: NSObject, NSApplicationDelegate {
     private let historyStore: HistoryStore
     private lazy var historyModel = HistoryModel(store: historyStore)
     private let overlay = RecordingOverlay()
-    private var previewTask: Task<Void, Never>?
     private lazy var setupModel: SetupModel = {
         let m = SetupModel()
         m.llmModelID = config.llm.modelID
@@ -164,7 +163,6 @@ final class AppController: NSObject, NSApplicationDelegate {
         guard activeMode != nil else { return }
         _ = capture.stop()
         capture.onLevel = nil
-        previewTask?.cancel(); previewTask = nil
         overlay.hide()
         activeMode = nil
         slog("recording cancelled")
@@ -172,23 +170,6 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     @objc private func stopAndInsert() { finishRecording() }
-
-    /// Periodically re-transcribe the growing buffer so the overlay shows live text while speaking.
-    private func startStreamingPreview() {
-        previewTask?.cancel()
-        previewTask = Task { @MainActor in
-            while self.activeMode != nil {
-                try? await Task.sleep(for: .milliseconds(1200))
-                guard self.activeMode != nil else { break }
-                let snap = self.capture.snapshot()
-                guard snap.duration >= 0.6 else { continue }
-                if let text = try? await self.asr.transcribe(snap, languageHint: self.config.asrLanguage),
-                   self.activeMode != nil {
-                    self.overlay.updatePreview(text)
-                }
-            }
-        }
-    }
 
     /// Warm the ASR model at launch so first real use isn't a 20-40s mystery wait.
     func prewarm() async {
@@ -229,7 +210,6 @@ final class AppController: NSObject, NSApplicationDelegate {
             activeMode = mode
             let label: String = { if case .translation = mode { return "Translating" } else { return "Recording" } }()
             overlay.show(label: label)
-            startStreamingPreview()
             slog("recording started")
             refreshUI()
         } catch {
@@ -243,7 +223,6 @@ final class AppController: NSObject, NSApplicationDelegate {
         guard let mode = activeMode else { return }
         let audio = capture.stop()
         capture.onLevel = nil
-        previewTask?.cancel(); previewTask = nil
         overlay.hide()
         activeMode = nil
         isWorking = true
