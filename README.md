@@ -32,6 +32,8 @@ swift test       # run unit tests
 
 Requires Xcode 26+ / Swift 6.2, Apple Silicon.
 
+Out of the box the app runs fully local with **WhisperKit ASR + rule-based polish** (no key, offline). To enable the **MLX Qwen LLM** (stronger polish + translation), the Metal toolchain must be installed (`sudo xcodebuild -runFirstLaunch`), then set `llm.modelID` to `mlx-community/Qwen3-1.7B-4bit` in `~/Library/Application Support/SaidDone/config.json` or Settings. See [STATUS.md](STATUS.md).
+
 ## License
 
 [MIT](LICENSE).

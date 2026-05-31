@@ -35,10 +35,15 @@ public enum ProviderFactory {
     /// Local LLM ladder: MLX-Qwen3.5 → RuleBasedLLM (Polish always has a deterministic floor).
     /// Cloud LLM (opt-in) when selected and credentials are present.
     public static func makeLLM(_ config: AppConfig, cloud: CloudCredentials? = nil) -> LLMProvider {
-        let local = FallbackLLMProvider([
-            MLXQwenLLMProvider(modelID: config.llm.modelID),
-            RuleBasedLLM(),
-        ])
+        // MLX LLM is opt-in by an explicit "mlx-community/..." model id: it loads a model at runtime
+        // and aborts natively if MLX's metallib isn't compiled (needs full Xcode Metal toolchain).
+        // Default keeps a crash-proof local floor (RuleBasedLLM) so the app always runs.
+        var localRungs: [LLMProvider] = []
+        if config.llm.modelID.hasPrefix("mlx-community/") {
+            localRungs.append(MLXQwenLLMProvider(modelID: config.llm.modelID))
+        }
+        localRungs.append(RuleBasedLLM())
+        let local = FallbackLLMProvider(localRungs)
         switch config.llm.location {
         case .local:
             return local

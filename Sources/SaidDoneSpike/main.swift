@@ -1,7 +1,14 @@
 import Foundation
 import AVFoundation
+import MLX
 import SaidDoneCore
 import SaidDoneProviders
+
+setvbuf(stdout, nil, _IONBF, 0)  // unbuffered so output survives a native crash
+// swift build CLI doesn't compile MLX's metallib -> force CPU backend so we can verify correctness.
+if ProcessInfo.processInfo.environment["MLX_FORCE_CPU"] == "1" {
+    Device.setDefault(device: Device(.cpu))
+}
 
 // Usage: SaidDoneSpike <audiofile> [dictate|translate] [targetLang]
 // Loads audio → 16k mono → runs the local ASR ladder + LLM, prints raw/final + timing.

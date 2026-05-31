@@ -10,6 +10,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "1.0.0"),
+        .package(url: "https://github.com/ml-explore/mlx-swift-examples", from: "2.29.1"),
+        .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.29.0"),
     ],
     targets: [
         // Pure logic: protocols, pipeline, dictionary, profiles, config, rule-based polish. No external deps.
@@ -20,6 +22,8 @@ let package = Package(
             dependencies: [
                 "SaidDoneCore",
                 .product(name: "WhisperKit", package: "WhisperKit"),
+                .product(name: "MLXLLM", package: "mlx-swift-examples"),
+                .product(name: "MLXLMCommon", package: "mlx-swift-examples"),
             ]
         ),
         // Menu-bar app shell: capture, hotkey, insertion, UI.
@@ -31,7 +35,10 @@ let package = Package(
         // Validates the real engines on-device without mic/GUI (Phase-0 spike).
         .executableTarget(
             name: "SaidDoneSpike",
-            dependencies: ["SaidDoneCore", "SaidDoneProviders"]
+            dependencies: [
+                "SaidDoneCore", "SaidDoneProviders",
+                .product(name: "MLX", package: "mlx-swift"),
+            ]
         ),
         .testTarget(name: "SaidDoneCoreTests", dependencies: ["SaidDoneCore"]),
         .testTarget(name: "SaidDoneProvidersTests", dependencies: ["SaidDoneProviders"]),
