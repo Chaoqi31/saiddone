@@ -31,6 +31,8 @@ final class AppController: NSObject, NSApplicationDelegate {
     // Providers built from config: local ASR ladder (Qwen3-ASR→0.6B→WhisperKit) + LLM ladder (MLX→RuleBased).
     private var asr: ASRProvider
     private var llm: LLMProvider
+    private let historyStore: HistoryStore
+    private lazy var historyModel = HistoryModel(store: historyStore)
 
     override init() {
         let dir = (try? ConfigStore.defaultDirectory()) ?? FileManager.default.temporaryDirectory
@@ -40,6 +42,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         self.config = cfg
         self.asr = ProviderFactory.makeASR(cfg)
         self.llm = ProviderFactory.makeLLM(cfg)
+        self.historyStore = HistoryStore(directory: dir)
         super.init()
     }
 
@@ -70,6 +73,25 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     private var settingsWindow: NSWindow?
+    private var mainWindow: NSWindow?
+
+    @objc private func openMainWindow() {
+        if let win = mainWindow {
+            historyModel.refresh()
+            win.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+        historyModel.refresh()
+        let win = NSWindow(contentViewController: NSHostingController(rootView: MainView(history: historyModel)))
+        win.title = "SaidDone"
+        win.styleMask = [.titled, .closable, .miniaturizable]
+        win.isReleasedWhenClosed = false
+        mainWindow = win
+        win.center()
+        win.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
 
     @objc private func openSettings() {
         if let win = settingsWindow {
@@ -110,6 +132,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             menu.addItem(menuItem("Start Translation  (⌃⌥T)", #selector(toggleTranslation)))
         }
         menu.addItem(.separator())
+        menu.addItem(menuItem("Open SaidDone…", #selector(openMainWindow)))
         menu.addItem(menuItem("Settings…", #selector(openSettings)))
         menu.addItem(withTitle: "Quit SaidDone", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
@@ -195,7 +218,13 @@ final class AppController: NSObject, NSApplicationDelegate {
             do {
                 let result = try await orch.run(audio, mode: mode, context: context,
                                                 languageHint: self.config.asrLanguage)
+                slog("RAW: '\(result.rawTranscript)'")
                 slog("pipeline done -> '\(result.text)' (\(String(format: "%.2f", result.elapsed))s)")
+                // Save to history BEFORE inserting, so text is recoverable even if paste fails.
+                let modeStr: String = { if case .translation = mode { return "translation" } else { return "dictation" } }()
+                self.historyStore.append(HistoryEntry(date: Date(), mode: modeStr,
+                                                      raw: result.rawTranscript, text: result.text))
+                self.historyModel.refresh()
                 InsertionService.insert(result.text)
             } catch {
                 slog("pipeline error: \(error)")
