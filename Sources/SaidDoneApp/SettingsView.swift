@@ -44,7 +44,7 @@ struct SettingsView: View {
                 .font(.caption).foregroundStyle(.secondary)
             Divider()
             TextField("Translation target language", text: $model.config.targetLanguage)
-            Text("Dictation: ⌥Space · Translation: ⌥⇧Space")
+            Text("Dictation: ⌃⌥D · Translation: ⌃⌥T")
                 .font(.caption).foregroundStyle(.secondary)
         }.padding()
     }

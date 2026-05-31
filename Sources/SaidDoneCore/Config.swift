@@ -54,10 +54,11 @@ public struct AppConfig: Codable, Sendable {
         self.appProfiles = appProfiles
     }
 
-    /// Zero-key local defaults (GOALS B4). Hotkeys: ⌥Space (dictation), ⌥⇧Space (translation).
+    /// Zero-key local defaults (GOALS B4). Hotkeys: ⌃⌥D (dictation), ⌃⌥T (translation) — avoid
+    /// ⌥Space (macOS input-source switch) and other system conflicts.
     public static let `default` = AppConfig(
-        dictationHotkey: Hotkey(keyCode: 49, modifiers: 0x080000),          // ⌥ + Space
-        translationHotkey: Hotkey(keyCode: 49, modifiers: 0x080000 | 0x020000), // ⌥⇧ + Space
+        dictationHotkey: Hotkey(keyCode: 2, modifiers: 0x040000 | 0x080000),   // ⌃⌥ + D
+        translationHotkey: Hotkey(keyCode: 17, modifiers: 0x040000 | 0x080000), // ⌃⌥ + T
         asr: ProviderSelection(location: .local, modelID: "qwen3-asr-1.7b"),
         llm: ProviderSelection(location: .local, modelID: "qwen3.5-0.8b")
     )
