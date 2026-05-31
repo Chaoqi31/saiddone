@@ -26,6 +26,9 @@ public struct AppConfig: Codable, Sendable {
     public var dictationHotkey: Hotkey
     public var translationHotkey: Hotkey
     public var targetLanguage: String
+    /// Primary spoken language for ASR (e.g. "zh", "en"); nil = auto-detect. Code-switch transcription
+    /// works best when this matches your primary language (WhisperKit auto-detect is unreliable for mixing).
+    public var asrLanguage: String?
     public var asr: ProviderSelection
     public var llm: ProviderSelection
     public var dictionary: CustomDictionary
@@ -35,6 +38,7 @@ public struct AppConfig: Codable, Sendable {
         dictationHotkey: Hotkey,
         translationHotkey: Hotkey,
         targetLanguage: String = "en",
+        asrLanguage: String? = "zh",
         asr: ProviderSelection,
         llm: ProviderSelection,
         dictionary: CustomDictionary = .init(),
@@ -43,6 +47,7 @@ public struct AppConfig: Codable, Sendable {
         self.dictationHotkey = dictationHotkey
         self.translationHotkey = translationHotkey
         self.targetLanguage = targetLanguage
+        self.asrLanguage = asrLanguage
         self.asr = asr
         self.llm = llm
         self.dictionary = dictionary

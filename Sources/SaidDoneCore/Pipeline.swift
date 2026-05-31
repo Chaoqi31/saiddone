@@ -32,11 +32,12 @@ public struct PipelineOrchestrator: Sendable {
     }
 
     /// Run audio through the full pipeline for `mode`. `context` is the resolved App Profile tone.
-    public func run(_ audio: AudioSamples, mode: Mode, context: PolishContext = .none) async throws -> PipelineResult {
+    public func run(_ audio: AudioSamples, mode: Mode, context: PolishContext = .none,
+                    languageHint: String? = nil) async throws -> PipelineResult {
         let clock = ContinuousClock()
         let start = clock.now
 
-        let raw = try await asr.transcribe(audio, languageHint: nil)
+        let raw = try await asr.transcribe(audio, languageHint: languageHint)
         let corrected = dictionary.apply(to: raw)
 
         let final: String

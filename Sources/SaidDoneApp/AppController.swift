@@ -132,7 +132,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         let orch = PipelineOrchestrator(asr: asr, llm: llm, dictionary: config.dictionary)
         Task { @MainActor in
             do {
-                let result = try await orch.run(audio, mode: mode, context: context)
+                let result = try await orch.run(audio, mode: mode, context: context,
+                                                languageHint: self.config.asrLanguage)
                 InsertionService.insert(result.text)
             } catch {
                 NSSound.beep()

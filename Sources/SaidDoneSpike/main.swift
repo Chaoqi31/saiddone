@@ -34,6 +34,7 @@ guard !specs.isEmpty else { print("usage: SaidDoneSpike 'path|mode|lang' ..."); 
 
 var cfg = AppConfig.default
 if let m = ProcessInfo.processInfo.environment["SAIDDONE_LLM"] { cfg.llm.modelID = m }
+if let l = ProcessInfo.processInfo.environment["SAIDDONE_ASR_LANG"] { cfg.asrLanguage = (l == "auto") ? nil : l }
 let orch = PipelineOrchestrator(asr: ProviderFactory.makeASR(cfg), llm: ProviderFactory.makeLLM(cfg))
 
 for spec in specs {
@@ -45,7 +46,7 @@ for spec in specs {
     do {
         let audio = try loadAudio(path)
         let t0 = Date()
-        let r = try await orch.run(audio, mode: mode)
+        let r = try await orch.run(audio, mode: mode, languageHint: cfg.asrLanguage)
         let dt = Date().timeIntervalSince(t0)
         let name = (path as NSString).lastPathComponent
         print("### \(name)  [\(modeStr)\(modeStr == "translate" ? "->\(lang)" : "")]  \(String(format: "%.1f", audio.duration))s audio  \(String(format: "%.2f", dt))s pipe")

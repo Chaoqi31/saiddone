@@ -86,7 +86,13 @@ public actor MLXQwenLLMProvider: LLMProvider {
             + "keep the original language, meaning, and technical terms. "
             + "If the speaker corrected themselves mid-sentence (said something, then restated it), keep ONLY the final intended version. "
             + "Reply with ONLY the cleaned text — no preamble, no explanation, no quotes."
-        return try await run(instructions: sys, prompt: text)
+        let out = try await run(instructions: sys, prompt: text)
+        // Guard: a small LLM sometimes collapses the whole utterance to a fragment. If the output
+        // is implausibly short vs input, treat as failure so the ladder falls back to RuleBasedLLM.
+        if !text.isEmpty, out.count < max(4, text.count / 3) {
+            throw ProviderError.modelUnavailable("\(id) polish output implausibly short — falling back")
+        }
+        return out
     }
 
     public func translate(_ text: String, to targetLanguage: String, context: PolishContext) async throws -> String {

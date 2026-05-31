@@ -32,6 +32,17 @@ struct SettingsView: View {
 
     private var general: some View {
         Form {
+            Picker("Primary spoken language", selection: Binding(
+                get: { model.config.asrLanguage ?? "auto" },
+                set: { model.config.asrLanguage = ($0 == "auto") ? nil : $0 }
+            )) {
+                Text("Chinese (中文)").tag("zh")
+                Text("English").tag("en")
+                Text("Auto-detect").tag("auto")
+            }
+            Text("Match your main language. Auto-detect is unreliable for zh-en code-switching.")
+                .font(.caption).foregroundStyle(.secondary)
+            Divider()
             TextField("Translation target language", text: $model.config.targetLanguage)
             Text("Dictation: ⌥Space · Translation: ⌥⇧Space")
                 .font(.caption).foregroundStyle(.secondary)

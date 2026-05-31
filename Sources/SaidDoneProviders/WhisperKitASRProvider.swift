@@ -26,7 +26,9 @@ public actor WhisperKitASRProvider: ASRProvider {
     public func transcribe(_ audio: AudioSamples, languageHint: String?) async throws -> String {
         try await loadIfNeeded()
         guard let pipe else { throw ProviderError.modelUnavailable(id) }
-        let options = DecodingOptions(language: languageHint)
+        // Allow an env override to experiment with a forced language (nil = auto-detect).
+        let lang = languageHint ?? ProcessInfo.processInfo.environment["SAIDDONE_ASR_LANG"]
+        let options = DecodingOptions(language: lang)
         let results = try await pipe.transcribe(audioArray: audio.samples, decodeOptions: options)
         return results
             .map { $0.text }

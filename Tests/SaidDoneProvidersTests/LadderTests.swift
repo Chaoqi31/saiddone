@@ -43,10 +43,6 @@ final class LadderTests: XCTestCase {
         XCTAssertEqual(out, "Hello.")
     }
 
-    func testFactoryDefaultsToLocalLadders() {
-        let asr = ProviderFactory.makeASR(.default)
-        let llm = ProviderFactory.makeLLM(.default)
-        XCTAssertEqual(asr.location, .local)
-        XCTAssertEqual(llm.location, .local)
-    }
+    // Note: factory default location is covered by SaidDoneCoreTests.testDefaultIsZeroKeyLocal.
+    // We avoid constructing the real WhisperKit/MLX ladder here (heavy framework init).
 }
