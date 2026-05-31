@@ -49,11 +49,29 @@ final class HistoryModel: ObservableObject {
     }
 }
 
+/// Editable dictionary backed by the app config (changes persisted via `onChange`).
+@MainActor
+final class DictionaryModel: ObservableObject {
+    @Published var entries: [DictionaryEntry]
+    let onChange: ([DictionaryEntry]) -> Void
+    init(entries: [DictionaryEntry], onChange: @escaping ([DictionaryEntry]) -> Void) {
+        self.entries = entries; self.onChange = onChange
+    }
+    func commit() { onChange(entries) }
+    func add() { entries.insert(.init(wrong: "", right: ""), at: 0); commit() }
+    func removeAt(_ i: Int) { guard entries.indices.contains(i) else { return }; entries.remove(at: i); commit() }
+}
+
 enum Pane: String, CaseIterable, Identifiable {
-    case home, history, setup
+    case home, history, dictionary, setup
     var id: String { rawValue }
     var title: String { rawValue.capitalized }
-    var icon: String { self == .home ? "house" : self == .history ? "clock" : "checklist" }
+    var icon: String {
+        switch self {
+        case .home: return "house"; case .history: return "clock"
+        case .dictionary: return "character.book.closed"; case .setup: return "checklist"
+        }
+    }
 }
 
 func copyToClipboard(_ text: String) {
@@ -64,6 +82,7 @@ func copyToClipboard(_ text: String) {
 struct MainView: View {
     @ObservedObject var history: HistoryModel
     @ObservedObject var setup: SetupModel
+    @ObservedObject var dictionary: DictionaryModel
     @State private var pane: Pane? = .home
 
     var body: some View {
@@ -76,10 +95,47 @@ struct MainView: View {
             switch pane ?? .home {
             case .home: HomePane(history: history, go: { pane = $0 })
             case .history: HistoryPane(model: history)
+            case .dictionary: DictionaryPane(model: dictionary)
             case .setup: SetupView(model: setup)
             }
         }
         .frame(minWidth: 720, idealWidth: 760, minHeight: 480, idealHeight: 520)
+    }
+}
+
+private struct DictionaryPane: View {
+    @ObservedObject var model: DictionaryModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Dictionary").font(.title2.bold())
+                Spacer()
+                Button { model.add() } label: { Label("Add term", systemImage: "plus") }
+            }
+            Text("Heard → Correct. Applied to every transcript. Auto-filled when you fix a word in History.")
+                .font(.caption).foregroundStyle(.secondary)
+            List {
+                ForEach(model.entries.indices, id: \.self) { i in
+                    HStack(spacing: 8) {
+                        TextField("heard", text: Binding(get: { model.entries[i].wrong },
+                                                         set: { model.entries[i].wrong = $0 }))
+                            .onSubmit { model.commit() }
+                        Image(systemName: "arrow.right").foregroundStyle(.secondary)
+                        TextField("correct", text: Binding(get: { model.entries[i].right },
+                                                           set: { model.entries[i].right = $0 }))
+                            .onSubmit { model.commit() }
+                        Button { model.removeAt(i) } label: { Image(systemName: "trash") }
+                            .buttonStyle(.borderless)
+                    }
+                }
+            }
+            .overlay { if model.entries.isEmpty {
+                ContentUnavailableView("No terms yet", systemImage: "character.book.closed",
+                                       description: Text("Add a term, or fix a word in History to learn one."))
+            } }
+            Text("Tip: press Return after editing a cell to save.").font(.caption2).foregroundStyle(.secondary)
+        }
+        .padding(20)
     }
 }
 
@@ -165,7 +221,6 @@ private struct HistoryPane: View {
     @ObservedObject var model: HistoryModel
     @State private var editing: HistoryEntry?
     @State private var draft = ""
-    @State private var learnedMsg: String?
 
     private var groups: [(String, [HistoryEntry])] {
         let cal = Calendar.current
@@ -204,31 +259,32 @@ private struct HistoryPane: View {
         }
         .navigationTitle("History")
         .sheet(item: $editing) { e in editSheet(e) }
-        .alert("Added to dictionary", isPresented: Binding(get: { learnedMsg != nil }, set: { if !$0 { learnedMsg = nil } })) {
-            Button("OK") { learnedMsg = nil }
-        } message: { Text(learnedMsg ?? "") }
     }
 
     private func editSheet(_ e: HistoryEntry) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let detected = DictionaryLearning.diffTerms(old: e.text, new: draft)
+        return VStack(alignment: .leading, spacing: 12) {
             Text("Edit & learn").font(.headline)
-            Text("Fix any wrong words. English-term fixes are added to your dictionary so future dictations auto-correct.")
+            Text("Fix any wrong words. English-term fixes get added to your dictionary so future dictations auto-correct.")
                 .font(.caption).foregroundStyle(.secondary)
             TextEditor(text: $draft).font(.body).frame(minHeight: 120)
                 .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
+            if detected.isEmpty {
+                Label("No new dictionary terms detected.", systemImage: "info.circle")
+                    .font(.caption).foregroundStyle(.secondary)
+            } else {
+                Label("Will add to dictionary: " + detected.map { "\($0.wrong) → \($0.right)" }.joined(separator: ",  "),
+                      systemImage: "character.book.closed.fill")
+                    .font(.caption).foregroundStyle(.green)
+            }
             HStack {
                 Spacer()
                 Button("Cancel") { editing = nil }
-                Button("Save") {
-                    let terms = model.saveEdit(e, newText: draft)
-                    editing = nil
-                    if !terms.isEmpty {
-                        learnedMsg = terms.map { "\($0.wrong) → \($0.right)" }.joined(separator: ", ")
-                    }
-                }.keyboardShortcut(.defaultAction)
+                Button("Save") { model.saveEdit(e, newText: draft); editing = nil }
+                    .keyboardShortcut(.defaultAction)
             }
         }
-        .padding(20).frame(width: 460)
+        .padding(20).frame(width: 480)
     }
 
     private func row(_ e: HistoryEntry) -> some View {

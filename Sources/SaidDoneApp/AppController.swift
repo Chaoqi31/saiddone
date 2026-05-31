@@ -40,6 +40,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         m.onPrepare = { [weak self] in await self?.prewarm() }
         return m
     }()
+    private lazy var dictionaryModel = DictionaryModel(
+        entries: config.dictionary.entries,
+        onChange: { [weak self] entries in self?.saveDictionary(entries) }
+    )
 
     override init() {
         let dir = (try? ConfigStore.defaultDirectory()) ?? FileManager.default.temporaryDirectory
@@ -96,7 +100,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         historyModel.refresh()
         setupModel.refresh()
-        let win = NSWindow(contentViewController: NSHostingController(rootView: MainView(history: historyModel, setup: setupModel)))
+        dictionaryModel.entries = config.dictionary.entries   // sync with any Settings edits
+        let win = NSWindow(contentViewController: NSHostingController(rootView: MainView(history: historyModel, setup: setupModel, dictionary: dictionaryModel)))
         win.title = "SaidDone"
         win.styleMask = [.titled, .closable, .miniaturizable]
         win.isReleasedWhenClosed = false
@@ -125,13 +130,19 @@ final class AppController: NSObject, NSApplicationDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Dictionary changes are read live at dictation time, so just persist — no provider rebuild.
+    private func saveDictionary(_ entries: [DictionaryEntry]) {
+        config.dictionary.entries = entries
+        try? configStore.save(config)
+    }
+
     /// Merge auto-learned correction terms into the dictionary (from a History edit).
     private func learnTerms(_ terms: [DictionaryEntry]) {
-        var cfg = config
-        var byKey = Dictionary(cfg.dictionary.entries.map { ($0.wrong, $0) }) { a, _ in a }
+        var byKey = Dictionary(config.dictionary.entries.map { ($0.wrong, $0) }) { a, _ in a }
         for t in terms { byKey[t.wrong] = t }
-        cfg.dictionary.entries = byKey.values.sorted { $0.wrong < $1.wrong }
-        applyConfig(cfg)
+        let merged = byKey.values.sorted { $0.wrong < $1.wrong }
+        saveDictionary(merged)
+        dictionaryModel.entries = merged   // reflect in an open window
         slog("learned dictionary terms: \(terms.map { "\($0.wrong)->\($0.right)" }.joined(separator: ","))")
     }
 
