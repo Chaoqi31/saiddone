@@ -32,6 +32,20 @@ public struct CloudConfig: Codable, Sendable, Equatable {
     public var proxyHost: String = ""
     public var proxyPort: Int = 0
     public init() {}
+
+    /// Lenient decode: missing keys fall back to defaults, so adding fields never breaks an existing
+    /// config.json (a strict decode here once silently reset the whole config to local rule-based).
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        llmKey = try c.decodeIfPresent(String.self, forKey: .llmKey) ?? ""
+        llmBaseURL = try c.decodeIfPresent(String.self, forKey: .llmBaseURL) ?? "https://api.openai.com/v1"
+        llmModel = try c.decodeIfPresent(String.self, forKey: .llmModel) ?? "gpt-4o-mini"
+        asrKey = try c.decodeIfPresent(String.self, forKey: .asrKey) ?? ""
+        asrBaseURL = try c.decodeIfPresent(String.self, forKey: .asrBaseURL) ?? "https://api.openai.com/v1"
+        asrModel = try c.decodeIfPresent(String.self, forKey: .asrModel) ?? "whisper-1"
+        proxyHost = try c.decodeIfPresent(String.self, forKey: .proxyHost) ?? ""
+        proxyPort = try c.decodeIfPresent(Int.self, forKey: .proxyPort) ?? 0
+    }
 }
 
 /// Persisted app config (Config Store, ARCHITECTURE). Codable -> JSON in Application Support.

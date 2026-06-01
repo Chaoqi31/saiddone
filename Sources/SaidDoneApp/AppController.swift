@@ -88,7 +88,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             InsertionService.insert(text, autoCopy: self?.config.autoCopyToClipboard ?? false)
         }
         let n = registerHotkeys()
-        slog("launched, \(n) hotkeys registered")
+        slog("launched, \(n) hotkeys registered — ASR=\(asr.id) LLM=\(llm.id)")
         Permissions.accessibilityTrusted(prompt: true)
         LoginItem.apply(config.launchAtLogin)
         Task {
