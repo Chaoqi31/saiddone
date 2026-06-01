@@ -18,6 +18,11 @@ public struct ProviderSelection: Codable, Sendable, Equatable {
         self.location = location
         self.modelID = modelID
     }
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        location = try c.decodeIfPresent(ProviderLocation.self, forKey: .location) ?? .local
+        modelID = try c.decodeIfPresent(String.self, forKey: .modelID) ?? ""
+    }
 }
 
 /// Opt-in cloud endpoints (OpenAI-compatible). Keys live in config.json — local dev tool; keep private.
@@ -170,11 +175,16 @@ public struct ConfigStore: Sendable {
     }
 
     public func load() -> AppConfig {
-        guard let data = try? Data(contentsOf: url),
-              let cfg = try? JSONDecoder().decode(AppConfig.self, from: data) else {
+        guard let data = try? Data(contentsOf: url) else { return .default }   // no file = fresh install
+        do {
+            return try JSONDecoder().decode(AppConfig.self, from: data)
+        } catch {
+            // A real config existed but couldn't be read — never silently use defaults without a trace.
+            // Preserve the file (so the user's settings aren't lost) and log loudly.
+            NSLog("SaidDone: CONFIG DECODE FAILED — using defaults this launch, original kept. Error: %@", "\(error)")
+            try? data.write(to: url.appendingPathExtension("bad"))
             return .default
         }
-        return cfg
     }
 
     public func save(_ config: AppConfig) throws {
