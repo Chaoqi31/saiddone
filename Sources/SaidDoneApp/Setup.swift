@@ -19,13 +19,14 @@ final class SetupModel: ObservableObject {
     var onDownloadASR: ((@escaping @Sendable (Double) -> Void) async throws -> Void)?
 
     func downloadASR() {
-        busy = true; downloadProgress = 0; status = "Downloading speech model…"
+        busy = true; downloadProgress = 0
+        status = NSLocalizedString("Downloading speech model…", comment: "setup status")
         Task {
             do {
                 try await onDownloadASR? { p in Task { @MainActor in self.downloadProgress = p } }
-                status = "Speech model ready"
+                status = NSLocalizedString("Speech model ready", comment: "setup status")
             } catch {
-                status = "Download failed — check network / HuggingFace access"
+                status = NSLocalizedString("Download failed — check network / HuggingFace access", comment: "setup status")
             }
             busy = false; downloadProgress = nil; refresh()
         }
@@ -40,10 +41,11 @@ final class SetupModel: ObservableObject {
     }
 
     func prepare() {
-        busy = true; status = "Loading models… (first run downloads, 20–60s)"
+        busy = true; status = NSLocalizedString("Loading models… (first run downloads, 20–60s)", comment: "setup status")
         Task {
             await onPrepare?()
-            busy = false; status = "Ready"; refresh()
+            busy = false; status = NSLocalizedString("Ready", comment: "setup status")
+            refresh()
         }
     }
 
@@ -69,19 +71,23 @@ struct SetupView: View {
                 row("Speech (WhisperKit)", model.asrReady, nil)
                 if !model.asrReady {
                     HStack {
-                        Button(model.busy ? "Downloading…" : "Download speech model") { model.downloadASR() }
+                        Button(model.busy
+                               ? NSLocalizedString("Downloading…", comment: "setup button")
+                               : NSLocalizedString("Download speech model", comment: "setup button")) { model.downloadASR() }
                             .disabled(model.busy)
                         if let p = model.downloadProgress { ProgressView(value: p).frame(width: 160) }
                     }
                 }
                 row("LLM (\(model.llmModelID.isEmpty ? "local" : model.llmModelID))", model.llmReady, nil)
                 if !model.llmReady {
-                    Text("Missing LLM → run `scripts/get-models.sh` to download, or it falls back to rule-based polish.")
+                    Text("Missing LLM model → download it (or run `scripts/get-models.sh`), or pick “Rule-based only” in Providers. SaidDone never silently switches engines.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
             HStack {
-                Button(model.busy ? "Preparing…" : "Prepare / Warm models") { model.prepare() }
+                Button(model.busy
+                       ? NSLocalizedString("Preparing…", comment: "setup button")
+                       : NSLocalizedString("Prepare / Warm models", comment: "setup button")) { model.prepare() }
                     .disabled(model.busy)
                 Button("Refresh") { model.refresh() }
                 if model.busy { ProgressView().controlSize(.small) }
@@ -94,14 +100,14 @@ struct SetupView: View {
         .onAppear { model.refresh() }
     }
 
-    private func section(_ title: String, @ViewBuilder _ content: () -> some View) -> some View {
+    private func section(_ title: LocalizedStringKey, @ViewBuilder _ content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title).font(.headline)
             content()
         }
     }
 
-    private func row(_ label: String, _ ok: Bool, _ prefPane: String?) -> some View {
+    private func row(_ label: LocalizedStringKey, _ ok: Bool, _ prefPane: String?) -> some View {
         HStack {
             Image(systemName: ok ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
                 .foregroundStyle(ok ? .green : .orange)

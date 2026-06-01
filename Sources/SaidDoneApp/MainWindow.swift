@@ -96,7 +96,14 @@ final class DictionaryModel: ObservableObject {
 enum Pane: String, CaseIterable, Identifiable {
     case home, history, dictionary, settings
     var id: String { rawValue }
-    var title: String { rawValue.capitalized }
+    var title: String {
+        switch self {
+        case .home: return NSLocalizedString("Home", comment: "sidebar section")
+        case .history: return NSLocalizedString("History", comment: "sidebar section")
+        case .dictionary: return NSLocalizedString("Dictionary", comment: "sidebar section")
+        case .settings: return NSLocalizedString("Settings", comment: "sidebar section")
+        }
+    }
     var icon: String {
         switch self {
         case .home: return "house"; case .history: return "clock"
@@ -124,12 +131,15 @@ struct MainView: View {
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
         } detail: {
-            switch pane ?? .home {
-            case .home: HomePane(history: history, setup: setup, go: { pane = $0 })
-            case .history: HistoryPane(model: history)
-            case .dictionary: DictionaryPane(model: dictionary)
-            case .settings: SettingsView(model: config, setup: setup)
+            Group {
+                switch pane ?? .home {
+                case .home: HomePane(history: history, setup: setup, go: { pane = $0 })
+                case .history: HistoryPane(model: history)
+                case .dictionary: DictionaryPane(model: dictionary)
+                case .settings: SettingsView(model: config, setup: setup)
+                }
             }
+            .navigationTitle(pane?.title ?? "SaidDone")   // reflect the section, not a stale "History"
         }
         .frame(minWidth: 820, minHeight: 560)   // no ideal -> panes don't drive window resizing
     }
@@ -207,7 +217,7 @@ private struct HomePane: View {
                         Divider().frame(height: 34)
                         stat("\(totalChars)", "characters")
                         Divider().frame(height: 34)
-                        stat("≈\(minutesSaved) min", "typing saved")
+                        stat(String(format: NSLocalizedString("≈%lld min", comment: "typing-saved stat value"), minutesSaved), "typing saved")
                     }
                 }
 
@@ -215,6 +225,8 @@ private struct HomePane: View {
                     shortcutRow("Dictation", "speak → press again to stop & insert", "⌃⌥D")
                     Divider()
                     shortcutRow("Translation", "speak one language, insert another", "⌃⌥T")
+                    Divider()
+                    shortcutRow("Rewrite", "select text, speak an instruction", "⌃⌥R")
                     Divider()
                     Label("Text lands at your cursor — click into a field first.", systemImage: "cursorarrow.rays")
                         .font(.callout).foregroundStyle(.secondary)
@@ -258,7 +270,7 @@ private struct HomePane: View {
         (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.1.0"
     }
 
-    private func permRow(_ label: String, _ pane: String) -> some View {
+    private func permRow(_ label: LocalizedStringKey, _ pane: String) -> some View {
         HStack {
             Image(systemName: "circle.badge.exclamationmark").foregroundStyle(.orange)
             Text(label)
@@ -272,15 +284,15 @@ private struct HomePane: View {
     private var totalChars: Int { history.entries.reduce(0) { $0 + $1.text.count } }
     private var minutesSaved: Int { max(0, totalChars / 200) }   // ~200 chars/min typing
 
-    private func stat(_ value: String, _ label: String) -> some View {
+    private func stat(_ value: String, _ label: LocalizedStringKey) -> some View {
         VStack(spacing: 2) {
-            Text(value).font(.title2.weight(.semibold))
+            Text(verbatim: value).font(.title2.weight(.semibold))
             Text(label).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func card(_ title: String, icon: String, @ViewBuilder _ content: () -> some View) -> some View {
+    private func card(_ title: LocalizedStringKey, icon: String, @ViewBuilder _ content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(title, systemImage: icon).font(.headline)
             content()
@@ -290,14 +302,14 @@ private struct HomePane: View {
         .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private func shortcutRow(_ title: String, _ subtitle: String, _ keys: String) -> some View {
+    private func shortcutRow(_ title: LocalizedStringKey, _ subtitle: LocalizedStringKey, _ keys: String) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.body.weight(.medium))
                 Text(subtitle).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(keys).font(.system(.body, design: .rounded).weight(.semibold))
+            Text(verbatim: keys).font(.system(.body, design: .rounded).weight(.semibold))
                 .padding(.horizontal, 10).padding(.vertical, 4)
                 .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 7))
         }
@@ -334,7 +346,9 @@ private struct HistoryPane: View {
             }
             .overlay {
                 if model.filtered.isEmpty {
-                    ContentUnavailableView(model.search.isEmpty ? "No dictations yet" : "No matches",
+                    ContentUnavailableView(model.search.isEmpty
+                                           ? NSLocalizedString("No dictations yet", comment: "empty history")
+                                           : NSLocalizedString("No matches", comment: "empty search"),
                                            systemImage: "clock")
                 }
             }
@@ -350,7 +364,6 @@ private struct HistoryPane: View {
                 } label: { Image(systemName: "ellipsis.circle") }
             }
         }
-        .navigationTitle("History")
         .sheet(item: $editing) { e in editSheet(e) }
     }
 
@@ -366,7 +379,7 @@ private struct HistoryPane: View {
                 Label("No new dictionary terms detected.", systemImage: "info.circle")
                     .font(.caption).foregroundStyle(.secondary)
             } else {
-                Label("Will add to dictionary: " + detected.map { "\($0.wrong) → \($0.right)" }.joined(separator: ",  "),
+                Label(NSLocalizedString("Will add to dictionary: ", comment: "edit sheet prefix") + detected.map { "\($0.wrong) → \($0.right)" }.joined(separator: ",  "),
                       systemImage: "character.book.closed.fill")
                     .font(.caption).foregroundStyle(.green)
             }
@@ -384,24 +397,26 @@ private struct HistoryPane: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(e.text).textSelection(.enabled)
             HStack(spacing: 8) {
-                Text(e.mode == "translation" ? "翻译" : e.mode == "rewrite" ? "改写" : "听写")
+                Text(modeBadge(e.mode))
                     .font(.caption2).padding(.horizontal, 6).padding(.vertical, 1)
                     .background(.quaternary, in: Capsule())
                 Text(e.date.formatted(date: .omitted, time: .shortened))
                     .font(.caption2).foregroundStyle(.secondary)
                 Spacer()
-                if model.audioURL(e) != nil {
-                    Button { model.play(e) } label: { Image(systemName: "play.circle") }
-                        .buttonStyle(.borderless).help("Play audio")
-                    Button { model.exportAudio(e) } label: { Image(systemName: "square.and.arrow.down") }
-                        .buttonStyle(.borderless).help("Reveal audio in Finder")
-                }
                 Button { model.onReinsert?(e.text) } label: { Image(systemName: "arrow.up.left.square") }
                     .buttonStyle(.borderless).help("Insert at cursor")
-                Button { draft = e.text; editing = e } label: { Image(systemName: "pencil") }
-                    .buttonStyle(.borderless).help("Edit & learn term")
                 Button { copyToClipboard(e.text) } label: { Image(systemName: "doc.on.doc") }
                     .buttonStyle(.borderless).help("Copy")
+                Menu {
+                    Button { draft = e.text; editing = e } label: { Label("Edit & learn term", systemImage: "pencil") }
+                    if model.audioURL(e) != nil {
+                        Button { model.play(e) } label: { Label("Play audio", systemImage: "play.circle") }
+                        Button { model.exportAudio(e) } label: { Label("Reveal audio in Finder", systemImage: "square.and.arrow.down") }
+                    }
+                    Divider()
+                    Button(role: .destructive) { model.delete(e) } label: { Label("Delete", systemImage: "trash") }
+                } label: { Image(systemName: "ellipsis.circle") }
+                    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize().help("More")
             }
         }
         .padding(.vertical, 2)
@@ -410,9 +425,18 @@ private struct HistoryPane: View {
         }
     }
 
+    /// Localized short badge for a history entry's mode.
+    private func modeBadge(_ mode: String) -> String {
+        switch mode {
+        case "translation": return NSLocalizedString("Translation", comment: "history mode badge")
+        case "rewrite": return NSLocalizedString("Rewrite", comment: "history mode badge")
+        default: return NSLocalizedString("Dictation", comment: "history mode badge")
+        }
+    }
+
     private func label(for date: Date, cal: Calendar) -> String {
-        if cal.isDateInToday(date) { return "Today" }
-        if cal.isDateInYesterday(date) { return "Yesterday" }
+        if cal.isDateInToday(date) { return NSLocalizedString("Today", comment: "history group") }
+        if cal.isDateInYesterday(date) { return NSLocalizedString("Yesterday", comment: "history group") }
         return date.formatted(date: .abbreviated, time: .omitted)
     }
 }

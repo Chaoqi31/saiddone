@@ -75,78 +75,129 @@ struct SettingsView: View {
             SetupView(model: setup).tabItem { Text("Setup") }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.top, 4)
         .onDisappear { model.save() }
     }
 
+    // MARK: General
+
     private var general: some View {
         Form {
-            Picker("Primary spoken language", selection: Binding(
-                get: { model.config.asrLanguage ?? "auto" },
-                set: { model.config.asrLanguage = ($0 == "auto") ? nil : $0 }
-            )) {
-                Text("Chinese (中文)").tag("zh")
-                Text("English").tag("en")
-                Text("Auto-detect").tag("auto")
+            Section {
+                Picker("Primary spoken language", selection: Binding(
+                    get: { model.config.asrLanguage ?? "auto" },
+                    set: { model.config.asrLanguage = ($0 == "auto") ? nil : $0 }
+                )) {
+                    Text("Chinese (中文)").tag("zh")
+                    Text("English").tag("en")
+                    Text("Auto-detect").tag("auto")
+                }
+                TextField("Translation target", text: $model.config.targetLanguage)
+            } header: {
+                Text("Language")
+            } footer: {
+                Text("Match your main spoken language — auto-detect is unreliable for zh-en code-switching. Translation target is an ISO code like “en”.")
             }
-            Text("Match your main language. Auto-detect is unreliable for zh-en code-switching.")
-                .font(.caption).foregroundStyle(.secondary)
-            Divider()
-            TextField("Translation target language", text: $model.config.targetLanguage)
-            Divider()
-            HotkeyRecorder(label: "Dictation shortcut", hotkey: $model.config.dictationHotkey)
-            HotkeyRecorder(label: "Translation shortcut", hotkey: $model.config.translationHotkey)
-            HotkeyRecorder(label: "Rewrite shortcut", hotkey: $model.config.rewriteHotkey)
-            Divider()
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Personalization").font(.subheadline.weight(.medium))
-                Text("Tell the AI who you are — it tailors polishing to your jargon & code-switching (like ChatGPT custom instructions).")
-                    .font(.caption).foregroundStyle(.secondary)
-                TextEditor(text: $model.config.userProfile).font(.callout).frame(height: 64)
+
+            Section("Shortcuts") {
+                HotkeyRecorder(label: "Dictation", hotkey: $model.config.dictationHotkey)
+                HotkeyRecorder(label: "Translation", hotkey: $model.config.translationHotkey)
+                HotkeyRecorder(label: "Rewrite", hotkey: $model.config.rewriteHotkey)
+            }
+
+            Section {
+                TextEditor(text: $model.config.userProfile)
+                    .font(.callout).frame(height: 72)
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
+            } header: {
+                Text("Personalization")
+            } footer: {
+                Text("Tell the AI who you are — it tailors polishing to your role, jargon, and code-switching (like ChatGPT custom instructions).")
             }
-            Divider()
-            Toggle("Launch at login", isOn: $model.config.launchAtLogin)
-            Toggle("Keep result on clipboard (auto-copy)", isOn: $model.config.autoCopyToClipboard)
-            Toggle("Recording sounds", isOn: $model.config.soundsEnabled)
-            Toggle("Mute system audio while recording", isOn: $model.config.muteAudioWhileRecording)
-            Toggle("Voice commands (say \"换行\"/\"new line\" to break lines)", isOn: $model.config.voiceCommandsEnabled)
-            Toggle("Show live transcription preview while recording", isOn: $model.config.showLivePreview)
-            Divider()
-            HStack {
-                Button("Export Settings…") { model.export() }
-                Button("Import Settings…") { model.importConfig() }
+
+            Section("Behavior") {
+                Toggle("Launch at login", isOn: $model.config.launchAtLogin)
+                Toggle("Keep result on clipboard after inserting", isOn: $model.config.autoCopyToClipboard)
+                Toggle("Play recording sounds", isOn: $model.config.soundsEnabled)
+                Toggle("Mute system audio while recording", isOn: $model.config.muteAudioWhileRecording)
+                Toggle("Voice commands (say “换行” / “new line” to break lines)", isOn: $model.config.voiceCommandsEnabled)
+                Toggle("Show live transcription preview while recording", isOn: $model.config.showLivePreview)
             }
-        }.padding()
+
+            Section {
+                HStack {
+                    Button("Export Settings…") { model.export() }
+                    Button("Import Settings…") { model.importConfig() }
+                    Spacer()
+                }
+            } footer: {
+                Text("Export / import your full configuration as JSON. Note: this includes any cloud API keys — share the file carefully.")
+            }
+        }
+        .formStyle(.grouped)
     }
+
+    // MARK: Providers
 
     private var providers: some View {
         Form {
-            Picker("ASR location", selection: $model.config.asr.location) {
-                ForEach(ProviderLocation.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+            Section {
+                Picker("Run on", selection: $model.config.asr.location) {
+                    ForEach(ProviderLocation.allCases, id: \.self) { Text(LocalizedStringKey($0.rawValue.capitalized)).tag($0) }
+                }
+                if model.config.asr.location == .local {
+                    LabeledContent("Engine", value: "WhisperKit · large-v3-turbo")
+                } else {
+                    LabeledContent("Model", value: cloudOrDash(model.config.cloud.asrModel))
+                }
+            } header: {
+                Text("Speech recognition (ASR)")
+            } footer: {
+                Text(model.config.asr.location == .local
+                     ? "Runs fully offline on-device. Download the model in the Setup tab."
+                     : "Uses the OpenAI-compatible endpoint and key from the Cloud tab — audio leaves your device.")
             }
-            TextField("ASR model", text: $model.config.asr.modelID)
-            Divider()
-            Picker("LLM location", selection: $model.config.llm.location) {
-                ForEach(ProviderLocation.allCases, id: \.self) { Text($0.rawValue.capitalized).tag($0) }
+
+            Section {
+                Picker("Run on", selection: $model.config.llm.location) {
+                    ForEach(ProviderLocation.allCases, id: \.self) { Text(LocalizedStringKey($0.rawValue.capitalized)).tag($0) }
+                }
+                if model.config.llm.location == .local {
+                    Picker("Local model", selection: $model.config.llm.modelID) {
+                        Text("Qwen3 0.6B — fastest").tag("mlx-community/Qwen3-0.6B-4bit")
+                        Text("Qwen3 1.7B — default").tag("mlx-community/Qwen3-1.7B-4bit")
+                        Text("Qwen3 4B — better punctuation").tag("mlx-community/Qwen3-4B-4bit")
+                        Text("Qwen3 8B — best, heavy").tag("mlx-community/Qwen3-8B-4bit")
+                        Text("Rule-based only — no model").tag("rule-based")
+                    }
+                } else {
+                    LabeledContent("Model", value: cloudOrDash(model.config.cloud.llmModel))
+                }
+            } header: {
+                Text("Language model — polish · translate · rewrite")
+            } footer: {
+                Text(model.config.llm.location == .local
+                     ? "Bigger model → better punctuation & structuring, more RAM. Download in the Setup tab. Fully offline, zero-key."
+                     : "Uses the OpenAI-compatible endpoint and key from the Cloud tab — text leaves your device.")
             }
-            Picker("Local LLM model", selection: $model.config.llm.modelID) {
-                Text("Qwen3 0.6B — fastest").tag("mlx-community/Qwen3-0.6B-4bit")
-                Text("Qwen3 1.7B — default").tag("mlx-community/Qwen3-1.7B-4bit")
-                Text("Qwen3 4B — better punctuation").tag("mlx-community/Qwen3-4B-4bit")
-                Text("Qwen3 8B — best, heavy").tag("mlx-community/Qwen3-8B-4bit")
-                Text("Rule-based only — no model").tag("rule-based")
-            }
-            Text("Bigger = better polish/punctuation, more RAM. New model must be downloaded first (Setup tab / get-models.sh). Local = private/offline/zero-key; Cloud = opt-in, data leaves device.")
-                .font(.caption).foregroundStyle(.secondary)
-        }.padding()
+        }
+        .formStyle(.grouped)
     }
+
+    /// Cloud value, or a hint pointing at the Cloud tab when unset.
+    private func cloudOrDash(_ s: String) -> String {
+        s.isEmpty ? NSLocalizedString("— set in Cloud tab", comment: "providers cloud model unset") : s
+    }
+
+    // MARK: Cloud
 
     private var cloud: some View {
         Form {
-            Text("Opt-in. Keys saved in config.json; audio/text leaves the device. Set a provider's location to Cloud (Providers tab) to use these.")
-                .font(.caption).foregroundStyle(.secondary)
-            Section("LLM — polish / translate") {
+            Section {
+                Label("Keys are saved in config.json and audio/text leaves your device. Pick Cloud for a stage in the Providers tab to use these.",
+                      systemImage: "lock.open")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            Section("LLM — polish / translate / rewrite") {
                 SecureField("API key", text: $model.config.cloud.llmKey)
                 TextField("Base URL", text: $model.config.cloud.llmBaseURL)
                 TextField("Model", text: $model.config.cloud.llmModel)
@@ -156,31 +207,48 @@ struct SettingsView: View {
                 TextField("Base URL", text: $model.config.cloud.asrBaseURL)
                 TextField("Model", text: $model.config.cloud.asrModel)
             }
-            Section("Proxy (optional, for cloud calls)") {
+            Section {
                 TextField("Host", text: $model.config.cloud.proxyHost)
                 TextField("Port", value: $model.config.cloud.proxyPort, format: .number)
+            } header: {
+                Text("Proxy (optional)")
+            } footer: {
+                Text("Route cloud calls through an HTTP proxy. Leave blank for none.")
             }
-        }.padding()
+        }
+        .formStyle(.grouped)
     }
 
+    // MARK: App Profiles
 
     private var profiles: some View {
-        VStack(alignment: .leading) {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("App profiles").font(.title3.bold())
+                Text("Give the AI a per-app tone — e.g. formal in Mail, terse in Slack. A profile with a matching bundle id wins; a blank bundle id applies everywhere.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             List {
                 ForEach($model.config.appProfiles.profiles) { $p in
-                    VStack(alignment: .leading) {
-                        TextField("bundle id (blank = any)", text: Binding(
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("Bundle id (blank = any app)", text: Binding(
                             get: { p.bundleID ?? "" },
                             set: { p.bundleID = $0.isEmpty ? nil : $0 }
-                        ))
-                        TextField("tone prompt", text: $p.tonePrompt)
+                        )).font(.callout)
+                        TextField("Tone prompt — e.g. “formal, no emoji”", text: $p.tonePrompt).font(.callout)
                     }
+                    .padding(.vertical, 2)
                 }
                 .onDelete { model.config.appProfiles.profiles.remove(atOffsets: $0) }
             }
-            Button("Add profile") {
-                model.config.appProfiles.profiles.append(.init(bundleID: nil, tonePrompt: ""))
-            }
-        }.padding()
+            .overlay { if model.config.appProfiles.profiles.isEmpty {
+                ContentUnavailableView("No profiles", systemImage: "macwindow",
+                                       description: Text("Add one to tune the tone per app."))
+            } }
+            Button { model.config.appProfiles.profiles.append(.init(bundleID: nil, tonePrompt: "")) }
+                label: { Label("Add profile", systemImage: "plus") }
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

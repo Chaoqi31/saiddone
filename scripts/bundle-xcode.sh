@@ -37,6 +37,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key>          <string>1</string>
   <key>LSMinimumSystemVersion</key>   <string>14.0</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleLocalizations</key>
+  <array><string>en</string><string>zh-Hans</string></array>
   <key>NSMicrophoneUsageDescription</key>
   <string>SaidDone transcribes your speech on-device to type for you.</string>
 </dict>
@@ -45,6 +48,13 @@ PLIST
 
 # App icon (generated, not committed).
 ./scripts/make-icon.sh "$APP/Contents/Resources/AppIcon.icns" >/dev/null
+
+# Localizations (hand-authored .strings). SwiftUI Text / NSLocalizedString resolve against
+# Bundle.main = the .app, so these *.lproj must live in Contents/Resources.
+for lproj in Resources/*.lproj; do
+  [ -e "$lproj" ] || continue
+  cp -R "$lproj" "$APP/Contents/Resources/"
+done
 
 # Prefer the stable self-signed "SaidDone Dev" identity so macOS persists the Accessibility grant
 # across rebuilds (ad-hoc "-" re-prompts every launch). Falls back to ad-hoc if the cert is absent.

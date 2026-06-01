@@ -188,22 +188,26 @@ final class AppController: NSObject, NSApplicationDelegate {
         let menu = NSMenu()
         if let mode = activeMode {
             let label: String = {
-                switch mode { case .translation: return "Translation"; case .rewrite: return "Rewrite"; default: return "Dictation" }
+                switch mode {
+                case .translation: return NSLocalizedString("Translation", comment: "mode name")
+                case .rewrite: return NSLocalizedString("Rewrite", comment: "mode name")
+                default: return NSLocalizedString("Dictation", comment: "mode name")
+                }
             }()
-            menu.addItem(menuItem("Stop & Insert — \(label)", #selector(stopAndInsert), symbol: "stop.circle.fill"))
-            menu.addItem(menuItem("Cancel (discard)", #selector(cancelRecording), symbol: "xmark.circle"))
+            menu.addItem(menuItem(String(format: NSLocalizedString("Stop & Insert — %@", comment: "menu"), label), #selector(stopAndInsert), symbol: "stop.circle.fill"))
+            menu.addItem(menuItem(NSLocalizedString("Cancel (discard)", comment: "menu"), #selector(cancelRecording), symbol: "xmark.circle"))
         } else if isWorking {
-            let working = menuItem("Working…", nil, symbol: "hourglass"); working.isEnabled = false
+            let working = menuItem(NSLocalizedString("Working…", comment: "menu"), nil, symbol: "hourglass"); working.isEnabled = false
             menu.addItem(working)
         } else {
-            menu.addItem(menuItem("Start Dictation        ⌃⌥D", #selector(toggleDictation), symbol: "mic"))
-            menu.addItem(menuItem("Start Translation     ⌃⌥T", #selector(toggleTranslation), symbol: "globe"))
-            menu.addItem(menuItem("Start Rewrite          ⌃⌥R", #selector(toggleRewrite), symbol: "wand.and.stars"))
+            menu.addItem(menuItem(NSLocalizedString("Start Dictation        ⌃⌥D", comment: "menu"), #selector(toggleDictation), symbol: "mic"))
+            menu.addItem(menuItem(NSLocalizedString("Start Translation     ⌃⌥T", comment: "menu"), #selector(toggleTranslation), symbol: "globe"))
+            menu.addItem(menuItem(NSLocalizedString("Start Rewrite          ⌃⌥R", comment: "menu"), #selector(toggleRewrite), symbol: "wand.and.stars"))
         }
         menu.addItem(.separator())
-        menu.addItem(menuItem("Open SaidDone…", #selector(openMainWindow), symbol: "macwindow"))
+        menu.addItem(menuItem(NSLocalizedString("Open SaidDone…", comment: "menu"), #selector(openMainWindow), symbol: "macwindow"))
         menu.addItem(.separator())
-        menu.addItem(withTitle: "Quit SaidDone", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        menu.addItem(withTitle: NSLocalizedString("Quit SaidDone", comment: "menu"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
 
         let recording = activeMode != nil
@@ -286,7 +290,11 @@ final class AppController: NSObject, NSApplicationDelegate {
             try capture.start()
             activeMode = mode
             let label: String = {
-                switch mode { case .translation: return "Translating"; case .rewrite: return "Rewrite — speak instruction"; default: return "Recording" }
+                switch mode {
+                case .translation: return NSLocalizedString("Translating", comment: "overlay label")
+                case .rewrite: return NSLocalizedString("Rewrite — speak instruction", comment: "overlay label")
+                default: return NSLocalizedString("Recording", comment: "overlay label")
+                }
             }()
             overlay.show(label: label)
             if config.soundsEnabled { SoundFx.start() }
@@ -306,19 +314,19 @@ final class AppController: NSObject, NSApplicationDelegate {
         let s = "\(error)".lowercased()
         if s.contains("tls") || s.contains("-1200") || s.contains("offline") || s.contains("network")
             || s.contains("connection") || s.contains("timed out") || s.contains("could not connect") {
-            return "网络不可用，请检查连接后重试。"
+            return NSLocalizedString("Network unavailable. Check your connection and try again.", comment: "error")
         }
         if let pe = error as? ProviderError {
             switch pe {
-            case .notConfigured: return "云端未配置，请在 Settings → Cloud 填写 Key。"
-            case .modelUnavailable: return "引擎暂不可用，请稍后重试。"
-            case .latencyBudgetExceeded: return "处理超时，请重试。"
+            case .notConfigured: return NSLocalizedString("Cloud not configured — add your key in Settings → Cloud.", comment: "error")
+            case .modelUnavailable: return NSLocalizedString("Engine unavailable. Please try again shortly.", comment: "error")
+            case .latencyBudgetExceeded: return NSLocalizedString("Timed out. Please try again.", comment: "error")
             }
         }
         if s.contains("401") || s.contains("403") || s.contains("unauthor") || s.contains("api key") {
-            return "云端 Key 无效，请在 Settings → Cloud 检查。"
+            return NSLocalizedString("Invalid cloud key — check Settings → Cloud.", comment: "error")
         }
-        return "转写失败，请重试。"
+        return NSLocalizedString("Transcription failed. Please try again.", comment: "error")
     }
 
     private func finishRecording() {
@@ -371,7 +379,9 @@ final class AppController: NSObject, NSApplicationDelegate {
                 self.historyModel.refresh()
                 InsertionService.insert(finalText, autoCopy: self.config.autoCopyToClipboard)
                 if self.config.soundsEnabled { SoundFx.done() }
-                self.overlay.hide()
+                self.overlay.showDone(self.config.autoCopyToClipboard
+                    ? NSLocalizedString("Inserted · on clipboard", comment: "dictation done toast, auto-copy on")
+                    : NSLocalizedString("Inserted", comment: "dictation done toast"))
             } catch {
                 slog("pipeline error: \(error)")
                 NSSound.beep()

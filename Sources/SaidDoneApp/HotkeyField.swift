@@ -4,7 +4,7 @@ import SaidDoneCore
 
 /// Click to record a new global shortcut (captures the next key-with-modifier).
 struct HotkeyRecorder: View {
-    let label: String
+    let label: LocalizedStringKey
     @Binding var hotkey: Hotkey
     @State private var recording = false
     @State private var monitor: Any?
@@ -13,7 +13,7 @@ struct HotkeyRecorder: View {
         HStack {
             Text(label)
             Spacer()
-            Button(recording ? "Press shortcut…" : hotkeyDisplay(hotkey)) { toggle() }
+            Button(recording ? NSLocalizedString("Press shortcut…", comment: "hotkey recorder") : hotkeyDisplay(hotkey)) { toggle() }
                 .frame(minWidth: 120)
         }
         .onDisappear { stop() }

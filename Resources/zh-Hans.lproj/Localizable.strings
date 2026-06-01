@@ -1,0 +1,182 @@
+/* SaidDone — Simplified Chinese (zh-Hans). Keys are the English source literals. */
+
+/* Sidebar / navigation */
+"Home" = "主页";
+"History" = "历史";
+"Dictionary" = "词典";
+"Settings" = "设置";
+
+/* Modes (shortcut titles, history badge, menu) */
+"Dictation" = "听写";
+"Translation" = "翻译";
+"Rewrite" = "改写";
+
+/* Home */
+"Local-first voice-to-text" = "本地优先的语音转文字";
+"Finish setup" = "完成设置";
+"Stats" = "统计";
+"Quick start" = "快速上手";
+"Recent" = "最近";
+"Microphone — needed to record" = "麦克风 — 录音所需";
+"Accessibility — needed to paste at cursor" = "辅助功能 — 在光标处粘贴所需";
+"Grant" = "去授权";
+"dictations" = "条听写";
+"characters" = "个字符";
+"typing saved" = "节省打字";
+"≈%lld min" = "≈%lld 分钟";
+"speak → press again to stop & insert" = "说话 → 再按一次停止并插入";
+"speak one language, insert another" = "说一种语言，插入另一种";
+"select text, speak an instruction" = "选中文本，说出指令";
+"Text lands at your cursor — click into a field first." = "文字将插入到光标处 — 请先点进输入框";
+"No dictations yet. Press ⌃⌥D to start." = "还没有听写记录。按 ⌃⌥D 开始。";
+"See all %lld →" = "查看全部 %lld 条 →";
+"SaidDone %@ · local-first, open-source (MIT)" = "SaidDone %@ · 本地优先，开源 (MIT)";
+
+/* History */
+"Search history" = "搜索历史";
+"Refresh" = "刷新";
+"Export…" = "导出…";
+"Clear all" = "清空全部";
+"Today" = "今天";
+"Yesterday" = "昨天";
+"No dictations yet" = "还没有听写记录";
+"No matches" = "无匹配结果";
+"Edit & learn" = "编辑并学习";
+"Fix any wrong words. English-term fixes get added to your dictionary so future dictations auto-correct." = "修正错词。对英文术语的修正会加入你的词典，之后听写将自动纠正。";
+"No new dictionary terms detected." = "未检测到新的词典词条。";
+"Will add to dictionary: " = "将加入词典：";
+"Cancel" = "取消";
+"Save" = "保存";
+"Edit & learn term" = "编辑并学习词条";
+"Play audio" = "播放录音";
+"Reveal audio in Finder" = "在访达中显示录音";
+"Delete" = "删除";
+"Insert at cursor" = "插入到光标处";
+"Copy" = "复制";
+"More" = "更多";
+
+/* Dictionary */
+"Import" = "导入";
+"Export" = "导出";
+"Add term" = "添加词条";
+"Heard → Correct. Applied to every transcript. Auto-filled when you fix a word in History." = "听到 → 纠正为。应用于每次转写。在历史中修正词语时会自动填入。";
+"heard" = "听到的";
+"correct" = "纠正为";
+"No terms yet" = "还没有词条";
+"Add a term, or fix a word in History to learn one." = "添加一个词条，或在历史中修正词语以自动学习。";
+"Tip: press Return after editing a cell to save." = "提示：编辑后按回车保存。";
+
+/* Settings — tabs */
+"General" = "通用";
+"Providers" = "引擎";
+"Cloud" = "云端";
+"App Profiles" = "应用配置";
+"Setup" = "设置向导";
+
+/* Settings — General */
+"Primary spoken language" = "主要口语语言";
+"Chinese (中文)" = "中文";
+"English" = "英语";
+"Auto-detect" = "自动检测";
+"Translation target" = "翻译目标语言";
+"Language" = "语言";
+"Match your main spoken language — auto-detect is unreliable for zh-en code-switching. Translation target is an ISO code like “en”." = "匹配你的主要口语 — 自动检测对中英混说不可靠。翻译目标语言为 ISO 代码，如“en”。";
+"Shortcuts" = "快捷键";
+"Personalization" = "个性化";
+"Tell the AI who you are — it tailors polishing to your role, jargon, and code-switching (like ChatGPT custom instructions)." = "告诉 AI 你是谁 — 它会按你的身份、术语和中英混说来润色（类似 ChatGPT 自定义指令）。";
+"Behavior" = "行为";
+"Launch at login" = "登录时启动";
+"Keep result on clipboard after inserting" = "插入后保留到剪贴板";
+"Play recording sounds" = "播放录音提示音";
+"Mute system audio while recording" = "录音时静音系统音频";
+"Voice commands (say “换行” / “new line” to break lines)" = "语音命令（说“换行”/“new line”换行）";
+"Show live transcription preview while recording" = "录音时显示实时转写预览";
+"Export Settings…" = "导出设置…";
+"Import Settings…" = "导入设置…";
+"Export / import your full configuration as JSON. Note: this includes any cloud API keys — share the file carefully." = "以 JSON 导出/导入完整配置。注意：其中包含云端 API Key — 分享时请谨慎。";
+
+/* Settings — Providers */
+"Run on" = "运行于";
+"Local" = "本地";
+"Engine" = "引擎";
+"Model" = "模型";
+"— set in Cloud tab" = "— 在“云端”标签页设置";
+"Speech recognition (ASR)" = "语音识别 (ASR)";
+"Runs fully offline on-device. Download the model in the Setup tab." = "完全在本地离线运行。请在“设置向导”标签页下载模型。";
+"Uses the OpenAI-compatible endpoint and key from the Cloud tab — audio leaves your device." = "使用“云端”标签页的 OpenAI 兼容端点与 Key — 音频会离开你的设备。";
+"Language model — polish · translate · rewrite" = "语言模型 — 润色 · 翻译 · 改写";
+"Local model" = "本地模型";
+"Bigger model → better punctuation & structuring, more RAM. Download in the Setup tab. Fully offline, zero-key." = "模型越大 → 标点与结构越好，占用内存更多。请在“设置向导”下载。完全离线、无需 Key。";
+"Uses the OpenAI-compatible endpoint and key from the Cloud tab — text leaves your device." = "使用“云端”标签页的 OpenAI 兼容端点与 Key — 文本会离开你的设备。";
+"Qwen3 0.6B — fastest" = "Qwen3 0.6B — 最快";
+"Qwen3 1.7B — default" = "Qwen3 1.7B — 默认";
+"Qwen3 4B — better punctuation" = "Qwen3 4B — 标点更好";
+"Qwen3 8B — best, heavy" = "Qwen3 8B — 最佳，较重";
+"Rule-based only — no model" = "仅规则（不使用模型）";
+
+/* Settings — Cloud */
+"Keys are saved in config.json and audio/text leaves your device. Pick Cloud for a stage in the Providers tab to use these." = "Key 保存在 config.json 中，音频/文本会离开你的设备。在“引擎”标签页将某一阶段设为“云端”即可启用。";
+"LLM — polish / translate / rewrite" = "大模型 — 润色 / 翻译 / 改写";
+"API key" = "API Key";
+"Base URL" = "Base URL";
+"ASR — speech (OpenAI-compatible)" = "ASR — 语音（OpenAI 兼容）";
+"Proxy (optional)" = "代理（可选）";
+"Host" = "主机";
+"Port" = "端口";
+"Route cloud calls through an HTTP proxy. Leave blank for none." = "通过 HTTP 代理转发云端请求。留空表示不使用。";
+
+/* Settings — App Profiles */
+"App profiles" = "应用配置";
+"Give the AI a per-app tone — e.g. formal in Mail, terse in Slack. A profile with a matching bundle id wins; a blank bundle id applies everywhere." = "为每个应用设定语气 — 例如邮件正式、Slack 简洁。匹配 bundle id 的配置优先；留空则全局生效。";
+"Bundle id (blank = any app)" = "Bundle id（留空 = 任意应用）";
+"Tone prompt — e.g. “formal, no emoji”" = "语气提示 — 例如“正式，不用 emoji”";
+"No profiles" = "暂无配置";
+"Add one to tune the tone per app." = "添加一个以按应用调整语气。";
+"Add profile" = "添加配置";
+
+/* Setup */
+"Permissions" = "权限";
+"Microphone" = "麦克风";
+"Accessibility (paste into apps)" = "辅助功能（粘贴到应用）";
+"Models (on-device)" = "模型（本地）";
+"Speech (WhisperKit)" = "语音 (WhisperKit)";
+"LLM (%@)" = "大模型 (%@)";
+"Download speech model" = "下载语音模型";
+"Downloading…" = "下载中…";
+"Missing LLM model → download it (or run `scripts/get-models.sh`), or pick “Rule-based only” in Providers. SaidDone never silently switches engines." = "缺少大模型 → 请下载（或运行 `scripts/get-models.sh`），或在“引擎”中选择“仅规则”。SaidDone 不会静默切换引擎。";
+"Prepare / Warm models" = "准备 / 预热模型";
+"Preparing…" = "准备中…";
+"Downloading speech model…" = "正在下载语音模型…";
+"Speech model ready" = "语音模型就绪";
+"Download failed — check network / HuggingFace access" = "下载失败 — 请检查网络 / HuggingFace 访问";
+"Loading models… (first run downloads, 20–60s)" = "正在加载模型…（首次运行需下载，20–60 秒）";
+"Ready" = "就绪";
+
+/* Recording overlay */
+"Processing…" = "处理中…";
+"Recording" = "录音中";
+"Translating" = "翻译中";
+"Rewrite — speak instruction" = "改写 — 说出指令";
+"Inserted" = "已插入";
+"Inserted · on clipboard" = "已插入 · 已复制到剪贴板";
+
+/* Hotkey recorder */
+"Press shortcut…" = "请按快捷键…";
+
+/* Menu bar */
+"Stop & Insert — %@" = "停止并插入 — %@";
+"Cancel (discard)" = "取消（放弃）";
+"Working…" = "处理中…";
+"Start Dictation        ⌃⌥D" = "开始听写        ⌃⌥D";
+"Start Translation     ⌃⌥T" = "开始翻译     ⌃⌥T";
+"Start Rewrite          ⌃⌥R" = "开始改写          ⌃⌥R";
+"Open SaidDone…" = "打开 SaidDone…";
+"Quit SaidDone" = "退出 SaidDone";
+
+/* Errors (overlay) */
+"Network unavailable. Check your connection and try again." = "网络不可用，请检查连接后重试。";
+"Cloud not configured — add your key in Settings → Cloud." = "云端未配置，请在 设置 → 云端 填写 Key。";
+"Engine unavailable. Please try again shortly." = "引擎暂不可用，请稍后重试。";
+"Timed out. Please try again." = "处理超时，请重试。";
+"Invalid cloud key — check Settings → Cloud." = "云端 Key 无效，请在 设置 → 云端 检查。";
+"Transcription failed. Please try again." = "转写失败，请重试。";

@@ -10,12 +10,13 @@ final class OverlayModel: ObservableObject {
     @Published var label: String = "Recording"
     @Published var processing = false
     @Published var errorText: String?
+    @Published var doneText: String?
     @Published var previewText = ""
     var onFinish: (() -> Void)?
     var onCancel: (() -> Void)?
 
     func pushLevel(_ v: Float) { level = v; levels.removeFirst(); levels.append(v) }
-    func reset() { level = 0; seconds = 0; processing = false; errorText = nil; previewText = ""; levels = Array(repeating: 0, count: 30) }
+    func reset() { level = 0; seconds = 0; processing = false; errorText = nil; doneText = nil; previewText = ""; levels = Array(repeating: 0, count: 30) }
 }
 
 /// Floating, click-through-except-buttons overlay: dot + waveform + timer + ✓/✕ while recording,
@@ -50,6 +51,21 @@ final class RecordingOverlay {
         model.processing = true
     }
 
+    /// Briefly confirm success ("Inserted ✓") so finishing a dictation isn't silent, then dismiss.
+    func showDone(_ message: String) {
+        timer?.invalidate(); timer = nil
+        model.processing = false
+        model.errorText = nil
+        model.doneText = message
+        let panel = self.panel ?? makePanel()
+        self.panel = panel
+        reposition(panel)
+        panel.orderFrontRegardless()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [weak self] in
+            if self?.model.doneText == message { self?.hide() }
+        }
+    }
+
     /// Show an error in the overlay for a few seconds, then dismiss (so failures aren't silent).
     func showError(_ message: String) {
         timer?.invalidate(); timer = nil
@@ -68,6 +84,7 @@ final class RecordingOverlay {
         timer?.invalidate(); timer = nil
         model.processing = false
         model.errorText = nil
+        model.doneText = nil
         panel?.orderOut(nil)
     }
 
@@ -107,6 +124,12 @@ private struct OverlayView: View {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                     Text(err).font(.system(size: 12, weight: .medium)).lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                }
+            } else if let done = model.doneText {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                    Text(done).font(.system(size: 12, weight: .medium))
                     Spacer(minLength: 0)
                 }
             } else if model.processing {
