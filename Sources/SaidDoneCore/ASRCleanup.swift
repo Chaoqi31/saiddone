@@ -13,6 +13,14 @@ public enum ASRCleanup {
         "明镜与点点栏目", "明鏡與點點欄目", "Thanks for watching", "thanks for watching",
     ]
 
+    /// Standalone phrases Whisper appends on END-silence (a final "谢谢"/"thank you" after a pause).
+    /// Stripped ONLY when they are the trailing fragment — bare "谢谢" can be real mid-sentence.
+    static let trailingArtifacts: [String] = [
+        "谢谢观看", "謝謝觀看", "谢谢大家", "謝謝大家", "谢谢你的观看",
+        "谢谢你", "謝謝你", "谢谢", "謝謝",
+        "thank you for watching", "thank you", "thanks",
+    ]
+
     public static func strip(_ text: String) -> String {
         var t = text
         for phrase in hallucinations {
@@ -20,6 +28,25 @@ public enum ASRCleanup {
         }
         // Collapse whitespace and trim stray separators left behind.
         t = t.replacingOccurrences(of: "\\s{2,}", with: " ", options: .regularExpression)
+        t = stripTrailingArtifacts(t)
         return t.trimmingCharacters(in: CharacterSet(charactersIn: " \n\t，,。.、"))
+    }
+
+    private static let edgePunct = CharacterSet(charactersIn: " \n\t，,。.、!！?？~～…")
+
+    /// Repeatedly peel a trailing hallucination tail (and the punctuation around it) off the end.
+    private static func stripTrailingArtifacts(_ text: String) -> String {
+        var t = text
+        var changed = true
+        while changed {
+            changed = false
+            let trimmed = t.trimmingCharacters(in: edgePunct)
+            for a in trailingArtifacts where trimmed.lowercased().hasSuffix(a.lowercased()) {
+                t = String(trimmed.dropLast(a.count))
+                changed = true
+                break
+            }
+        }
+        return t
     }
 }

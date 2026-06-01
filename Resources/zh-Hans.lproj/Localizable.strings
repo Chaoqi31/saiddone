@@ -102,8 +102,10 @@
 "Model" = "模型";
 "— set in Cloud tab" = "— 在“云端”标签页设置";
 "Speech recognition (ASR)" = "语音识别 (ASR)";
-"Runs fully offline on-device. Download the model in the Setup tab." = "完全在本地离线运行。请在“设置向导”标签页下载模型。";
-"Uses the OpenAI-compatible endpoint and key from the Cloud tab — audio leaves your device." = "使用“云端”标签页的 OpenAI 兼容端点与 Key — 音频会离开你的设备。";
+"Whisper large-v3 — recommended, most accurate" = "Whisper large-v3 — 推荐，最准确";
+"Whisper large-v3 turbo — faster, lighter" = "Whisper large-v3 turbo — 更快、更轻";
+"Runs fully offline on-device. large-v3 is more accurate but slower and heavier; a newly-picked model downloads on first use (Setup tab)." = "完全在本地离线运行。large-v3 更准确，但更慢、更占资源；新选的模型首次使用时会下载（“设置向导”标签页）。";
+"Uses the OpenAI-compatible endpoint and key from the Cloud tab — audio leaves your device. Good Chinese engines: SiliconFlow SenseVoice or OpenAI gpt-4o-transcribe." = "使用“云端”标签页的 OpenAI 兼容端点与 Key — 音频会离开你的设备。中文推荐：SiliconFlow SenseVoice 或 OpenAI gpt-4o-transcribe。";
 "Language model — polish · translate · rewrite" = "语言模型 — 润色 · 翻译 · 改写";
 "Local model" = "本地模型";
 "Bigger model → better punctuation & structuring, more RAM. Download in the Setup tab. Fully offline, zero-key." = "模型越大 → 标点与结构越好，占用内存更多。请在“设置向导”下载。完全离线、无需 Key。";

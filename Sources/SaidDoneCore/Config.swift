@@ -32,7 +32,7 @@ public struct CloudConfig: Codable, Sendable, Equatable {
     public var llmModel: String = "gpt-4o-mini"
     public var asrKey: String = ""
     public var asrBaseURL: String = "https://api.openai.com/v1"
-    public var asrModel: String = "whisper-1"
+    public var asrModel: String = "gpt-4o-transcribe"
     /// Optional HTTP proxy for cloud calls (helps when behind a restrictive network). Empty = none.
     public var proxyHost: String = ""
     public var proxyPort: Int = 0
@@ -47,7 +47,7 @@ public struct CloudConfig: Codable, Sendable, Equatable {
         llmModel = try c.decodeIfPresent(String.self, forKey: .llmModel) ?? "gpt-4o-mini"
         asrKey = try c.decodeIfPresent(String.self, forKey: .asrKey) ?? ""
         asrBaseURL = try c.decodeIfPresent(String.self, forKey: .asrBaseURL) ?? "https://api.openai.com/v1"
-        asrModel = try c.decodeIfPresent(String.self, forKey: .asrModel) ?? "whisper-1"
+        asrModel = try c.decodeIfPresent(String.self, forKey: .asrModel) ?? "gpt-4o-transcribe"
         proxyHost = try c.decodeIfPresent(String.self, forKey: .proxyHost) ?? ""
         proxyPort = try c.decodeIfPresent(Int.self, forKey: .proxyPort) ?? 0
     }
@@ -153,7 +153,7 @@ public struct AppConfig: Codable, Sendable {
         dictationHotkey: Hotkey(keyCode: 2, modifiers: 0x040000 | 0x080000),   // ⌃⌥ + D
         translationHotkey: Hotkey(keyCode: 17, modifiers: 0x040000 | 0x080000), // ⌃⌥ + T
         rewriteHotkey: Hotkey(keyCode: 15, modifiers: 0x040000 | 0x080000),    // ⌃⌥ + R
-        asr: ProviderSelection(location: .local, modelID: "qwen3-asr-1.7b"),
+        asr: ProviderSelection(location: .local, modelID: "openai_whisper-large-v3-v20240930_turbo"),
         llm: ProviderSelection(location: .local, modelID: "qwen3.5-0.8b")
     )
 }

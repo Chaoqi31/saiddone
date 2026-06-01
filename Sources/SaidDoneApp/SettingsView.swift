@@ -145,7 +145,14 @@ struct SettingsView: View {
                     ForEach(ProviderLocation.allCases, id: \.self) { Text(LocalizedStringKey($0.rawValue.capitalized)).tag($0) }
                 }
                 if model.config.asr.location == .local {
-                    LabeledContent("Engine", value: "WhisperKit · large-v3-turbo")
+                    Picker("Local model", selection: Binding(
+                        get: { model.config.asr.modelID.lowercased().contains("whisper")
+                               ? model.config.asr.modelID : "openai_whisper-large-v3" },
+                        set: { model.config.asr.modelID = $0 }
+                    )) {
+                        Text("Whisper large-v3 — recommended, most accurate").tag("openai_whisper-large-v3")
+                        Text("Whisper large-v3 turbo — faster, lighter").tag("openai_whisper-large-v3-v20240930_turbo")
+                    }
                 } else {
                     LabeledContent("Model", value: cloudOrDash(model.config.cloud.asrModel))
                 }
@@ -153,8 +160,8 @@ struct SettingsView: View {
                 Text("Speech recognition (ASR)")
             } footer: {
                 Text(model.config.asr.location == .local
-                     ? "Runs fully offline on-device. Download the model in the Setup tab."
-                     : "Uses the OpenAI-compatible endpoint and key from the Cloud tab — audio leaves your device.")
+                     ? "Runs fully offline on-device. large-v3 is more accurate but slower and heavier; a newly-picked model downloads on first use (Setup tab)."
+                     : "Uses the OpenAI-compatible endpoint and key from the Cloud tab — audio leaves your device. Good Chinese engines: SiliconFlow SenseVoice or OpenAI gpt-4o-transcribe.")
             }
 
             Section {

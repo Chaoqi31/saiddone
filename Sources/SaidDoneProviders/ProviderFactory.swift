@@ -7,8 +7,8 @@ public enum ProviderFactory {
     public static func makeASR(_ config: AppConfig) -> ASRProvider {
         switch config.asr.location {
         case .local:
-            // Local ASR = WhisperKit (offline). (Qwen3-ASR will slot in here once wired.)
-            return WhisperKitASRProvider()
+            // Local ASR = WhisperKit (offline). modelID picks turbo vs large-v3 (sanitised in the provider).
+            return WhisperKitASRProvider(model: config.asr.modelID)
         case .cloud:
             let url = URL(string: config.cloud.asrBaseURL) ?? URL(string: "https://api.openai.com/v1")!
             return CloudASRProvider(apiKey: config.cloud.asrKey, baseURL: url, model: config.cloud.asrModel,

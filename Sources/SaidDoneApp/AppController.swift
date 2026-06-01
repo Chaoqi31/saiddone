@@ -56,7 +56,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         let m = SetupModel()
         m.llmModelID = config.llm.modelID
         m.onPrepare = { [weak self] in await self?.prewarm() }
-        m.onDownloadASR = { progress in try await ModelDownloader.downloadWhisper(progress: progress) }
+        m.onDownloadASR = { [weak self] progress in
+            try await ModelDownloader.downloadWhisper(model: self?.config.asr.modelID ?? "openai_whisper-large-v3",
+                                                      progress: progress)
+        }
         return m
     }()
     private lazy var dictionaryModel = DictionaryModel(

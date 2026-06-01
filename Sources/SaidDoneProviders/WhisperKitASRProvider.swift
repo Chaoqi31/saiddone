@@ -12,9 +12,12 @@ public actor WhisperKitASRProvider: ASRProvider {
     private var pipe: WhisperKit?
 
     /// `model`: a WhisperKit model id, e.g. "openai_whisper-large-v3-v20240930_turbo".
+    /// A non-Whisper id (e.g. a stale "qwen3-asr-*" left in config) maps to the turbo default so
+    /// local ASR always has a loadable model — this is name sanitising, not an engine fallback.
     public init(model: String = "openai_whisper-large-v3-v20240930_turbo") {
-        self.modelName = model
-        self.id = "whisperkit:\(model)"
+        let m = model.lowercased().contains("whisper") ? model : "openai_whisper-large-v3-v20240930_turbo"
+        self.modelName = m
+        self.id = "whisperkit:\(m)"
     }
 
     private func loadIfNeeded() async throws {
@@ -37,7 +40,9 @@ public actor WhisperKitASRProvider: ASRProvider {
         guard let pipe else { throw ProviderError.modelUnavailable(id) }
         // Allow an env override to experiment with a forced language (nil = auto-detect).
         let lang = languageHint ?? ProcessInfo.processInfo.environment["SAIDDONE_ASR_LANG"]
-        let options = DecodingOptions(language: lang)
+        // suppressBlank trims leading/trailing blank tokens; the threshold guards (compressionRatio /
+        // logProb / noSpeech) are on by default and drop low-confidence hallucinated segments.
+        let options = DecodingOptions(language: lang, suppressBlank: true)
         let results = try await pipe.transcribe(audioArray: audio.samples, decodeOptions: options)
         return results
             .map { $0.text }
