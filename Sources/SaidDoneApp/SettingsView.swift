@@ -119,6 +119,7 @@ struct SettingsView: View {
                 Toggle("Keep result on clipboard after inserting", isOn: $model.config.autoCopyToClipboard)
                 Toggle("Play recording sounds", isOn: $model.config.soundsEnabled)
                 Toggle("Mute system audio while recording", isOn: $model.config.muteAudioWhileRecording)
+                Toggle("Record from built-in mic (keep Bluetooth audio in hi-fi)", isOn: $model.config.preferBuiltInMic)
                 Toggle("Voice commands (say “换行” / “new line” to break lines)", isOn: $model.config.voiceCommandsEnabled)
                 Toggle("Show live transcription preview while recording", isOn: $model.config.showLivePreview)
             }

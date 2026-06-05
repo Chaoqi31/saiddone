@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Generate AppIcon.icns (a waveform glyph on an indigo→violet gradient, rounded-square macOS style).
-# Output: $1 (default dist/AppIcon.icns). Regenerated at bundle time; not committed.
+# Generate AppIcon.icns: a flat speech-bubble-with-checkmark mark ("said" + "done") in white with a
+# negative-space check, on a near-black macOS squircle. Output: $1 (default dist/AppIcon.icns).
+# Also refreshes the committed README logo (assets/logo.png) from the same master. Not committed (.icns).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT="${1:-dist/AppIcon.icns}"
@@ -9,33 +10,44 @@ SWIFT="$TMP/makeicon.swift"
 
 cat > "$SWIFT" <<'SWIFTEOF'
 import AppKit
-let size = 1024.0
-let img = NSImage(size: NSSize(width: size, height: size))
+let S = 1024.0
+let img = NSImage(size: NSSize(width: S, height: S))
 img.lockFocus()
-let rect = NSRect(x: 0, y: 0, width: size, height: size)
-NSBezierPath(roundedRect: rect, xRadius: size * 0.225, yRadius: size * 0.225).addClip()
-let grad = NSGradient(colors: [
-    NSColor(srgbRed: 0.42, green: 0.36, blue: 0.92, alpha: 1),
-    NSColor(srgbRed: 0.58, green: 0.30, blue: 0.86, alpha: 1),
-])
-grad?.draw(in: rect, angle: -90)
-// subtle top highlight
-NSColor.white.withAlphaComponent(0.12).setFill()
-NSBezierPath(ovalIn: NSRect(x: -size*0.2, y: size*0.55, width: size*1.4, height: size*0.9)).fill()
+let bg = NSColor(srgbRed: 0.055, green: 0.055, blue: 0.067, alpha: 1)
+let rect = NSRect(x: 0, y: 0, width: S, height: S)
 
-let cfg = NSImage.SymbolConfiguration(pointSize: size * 0.46, weight: .semibold)
-if let base = NSImage(systemSymbolName: "waveform", accessibilityDescription: nil)?.withSymbolConfiguration(cfg) {
-    let s = base.size
-    let tinted = NSImage(size: s)
-    tinted.lockFocus()
-    base.draw(at: .zero, from: NSRect(origin: .zero, size: s), operation: .sourceOver, fraction: 1)
-    NSColor.white.set()
-    NSRect(origin: .zero, size: s).fill(using: .sourceAtop)
-    tinted.unlockFocus()
-    tinted.draw(in: NSRect(x: (size - s.width)/2, y: (size - s.height)/2, width: s.width, height: s.height))
-}
+// Near-black macOS squircle.
+NSBezierPath(roundedRect: rect, xRadius: S * 0.225, yRadius: S * 0.225).addClip()
+bg.setFill(); rect.fill()
+
+// White speech bubble + bottom-left tail.
+let bx = 242.0, by = 392.0, bw = 540.0, bh = 392.0, r = 150.0
+let bubble = NSBezierPath(roundedRect: NSRect(x: bx, y: by, width: bw, height: bh), xRadius: r, yRadius: r)
+let tail = NSBezierPath()
+tail.move(to: NSPoint(x: 322, y: by + 40))
+tail.line(to: NSPoint(x: 486, y: by + 40))
+tail.line(to: NSPoint(x: 312, y: 300))
+tail.close()
+NSColor.white.setFill()
+bubble.fill(); tail.fill()
+
+// Checkmark as negative space (stroke in the background color over the white bubble).
+let chk = NSBezierPath()
+chk.move(to: NSPoint(x: 424, y: 576))
+chk.line(to: NSPoint(x: 500, y: 498))
+chk.line(to: NSPoint(x: 658, y: 666))
+chk.lineWidth = 66
+chk.lineCapStyle = .round
+chk.lineJoinStyle = .round
+bg.setStroke(); chk.stroke()
+
+// Hairline inner highlight for a touch of polish.
+let inset = rect.insetBy(dx: S * 0.018, dy: S * 0.018)
+let border = NSBezierPath(roundedRect: inset, xRadius: S * 0.205, yRadius: S * 0.205)
+border.lineWidth = S * 0.008
+NSColor.white.withAlphaComponent(0.08).setStroke(); border.stroke()
+
 img.unlockFocus()
-
 guard let tiff = img.tiffRepresentation, let rep = NSBitmapImageRep(data: tiff),
       let png = rep.representation(using: .png, properties: [:]) else { exit(1) }
 try! png.write(to: URL(fileURLWithPath: CommandLine.arguments[1]))
@@ -51,5 +63,9 @@ for s in 16 32 128 256 512; do
 done
 mkdir -p "$(dirname "$OUT")"
 iconutil -c icns "$SET" -o "$OUT"
+
+# Refresh the committed README logo (256px) from the same master.
+sips -z 256 256 "$MASTER" --out "assets/logo.png" >/dev/null 2>&1 || true
+
 echo "icon -> $OUT"
 rm -rf "$TMP"

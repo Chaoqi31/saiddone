@@ -79,6 +79,10 @@ public struct AppConfig: Codable, Sendable {
     public var voiceCommandsEnabled: Bool
     /// Show live transcription text in the overlay while speaking (off by default).
     public var showLivePreview: Bool
+    /// Capture from the built-in mic even when a Bluetooth headset is connected, so opening the mic
+    /// doesn't force AirPods from hi-fi A2DP down to muffled narrowband HFP. Off by default (uses the
+    /// system input you'd expect); opt in to avoid any playback degradation while recording.
+    public var preferBuiltInMic: Bool
     /// Opt-in cloud endpoints (used when a provider's location is .cloud and a key is set).
     public var cloud: CloudConfig
     /// Personalization: the user's background/profession/jargon, fed to the Polish LLM (like
@@ -101,6 +105,7 @@ public struct AppConfig: Codable, Sendable {
         muteAudioWhileRecording: Bool = false,
         voiceCommandsEnabled: Bool = false,
         showLivePreview: Bool = false,
+        preferBuiltInMic: Bool = false,
         cloud: CloudConfig = .init(),
         userProfile: String = ""
     ) {
@@ -110,6 +115,7 @@ public struct AppConfig: Codable, Sendable {
         self.muteAudioWhileRecording = muteAudioWhileRecording
         self.voiceCommandsEnabled = voiceCommandsEnabled
         self.showLivePreview = showLivePreview
+        self.preferBuiltInMic = preferBuiltInMic
         self.cloud = cloud
         self.userProfile = userProfile
         self.dictationHotkey = dictationHotkey
@@ -143,6 +149,7 @@ public struct AppConfig: Codable, Sendable {
         muteAudioWhileRecording = try c.decodeIfPresent(Bool.self, forKey: .muteAudioWhileRecording) ?? false
         voiceCommandsEnabled = try c.decodeIfPresent(Bool.self, forKey: .voiceCommandsEnabled) ?? false
         showLivePreview = try c.decodeIfPresent(Bool.self, forKey: .showLivePreview) ?? false
+        preferBuiltInMic = try c.decodeIfPresent(Bool.self, forKey: .preferBuiltInMic) ?? false
         cloud = try c.decodeIfPresent(CloudConfig.self, forKey: .cloud) ?? .init()
         userProfile = try c.decodeIfPresent(String.self, forKey: .userProfile) ?? ""
     }

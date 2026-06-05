@@ -289,6 +289,7 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private func startRecording(_ mode: Mode) {
         capture.onLevel = { [weak self] lvl in DispatchQueue.main.async { self?.overlay.updateLevel(lvl) } }
+        capture.preferBuiltInMic = config.preferBuiltInMic
         do {
             try capture.start()
             activeMode = mode

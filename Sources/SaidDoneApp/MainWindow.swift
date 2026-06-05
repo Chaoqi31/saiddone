@@ -112,6 +112,44 @@ enum Pane: String, CaseIterable, Identifiable {
     }
 }
 
+/// Flat brand mark: a white speech bubble with a negative-space checkmark on a near-black squircle
+/// ("said" + "done"). Mirrors the app icon drawn in scripts/make-icon.sh (1024-space coords, y-down).
+struct BrandMark: View {
+    var size: CGFloat = 60
+    private var bg: Color { Color(red: 0.055, green: 0.055, blue: 0.067) }
+
+    var body: some View {
+        let k = size / 1024
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.225, style: .continuous).fill(bg)
+            bubble(k).fill(.white)
+            check(k).stroke(bg, style: StrokeStyle(lineWidth: 66 * k, lineCap: .round, lineJoin: .round))
+            RoundedRectangle(cornerRadius: size * 0.205, style: .continuous)
+                .strokeBorder(.white.opacity(0.08), lineWidth: size * 0.008)
+        }
+        .frame(width: size, height: size)
+    }
+
+    private func bubble(_ k: CGFloat) -> Path {
+        var p = Path()
+        p.addRoundedRect(in: CGRect(x: 242 * k, y: 240 * k, width: 540 * k, height: 392 * k),
+                         cornerSize: CGSize(width: 150 * k, height: 150 * k))
+        p.move(to: CGPoint(x: 322 * k, y: 592 * k))
+        p.addLine(to: CGPoint(x: 486 * k, y: 592 * k))
+        p.addLine(to: CGPoint(x: 312 * k, y: 724 * k))
+        p.closeSubpath()
+        return p
+    }
+
+    private func check(_ k: CGFloat) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: 424 * k, y: 448 * k))
+        p.addLine(to: CGPoint(x: 500 * k, y: 526 * k))
+        p.addLine(to: CGPoint(x: 658 * k, y: 358 * k))
+        return p
+    }
+}
+
 func copyToClipboard(_ text: String) {
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(text, forType: .string)
@@ -194,10 +232,7 @@ private struct HomePane: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 HStack(spacing: 14) {
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(LinearGradient(colors: [.indigo, .purple], startPoint: .top, endPoint: .bottom))
-                        .frame(width: 60, height: 60)
-                        .overlay(Image(systemName: "waveform").font(.system(size: 28, weight: .semibold)).foregroundStyle(.white))
+                    BrandMark(size: 60)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("SaidDone").font(.largeTitle.bold())
                         Text("Local-first voice-to-text").foregroundStyle(.secondary)
