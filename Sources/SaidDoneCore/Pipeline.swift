@@ -42,6 +42,12 @@ public struct PipelineOrchestrator: Sendable {
         let cleaned = ASRCleanup.strip(raw)          // drop hallucinations (谢谢大家 …)
         let corrected = dictionary.apply(to: cleaned) // user term corrections
 
+        // Nothing intelligible captured — skip the LLM (it would hallucinate on empty input) and let
+        // the caller show a "no speech" hint rather than insert garbage.
+        guard !corrected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return PipelineResult(text: "", rawTranscript: raw, elapsed: start.duration(to: clock.now).asSeconds)
+        }
+
         let final: String
         switch mode {
         case .dictation:

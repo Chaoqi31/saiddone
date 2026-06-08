@@ -14,12 +14,18 @@ final class SetupModel: ObservableObject {
     @Published var status = ""
 
     @Published var downloadProgress: Double?
+    @Published var llmDownloadProgress: Double?
+    @Published var useMirror = false
     var llmModelID: String = ""
     var onPrepare: (() async -> Void)?
     var onDownloadASR: ((@escaping @Sendable (Double) -> Void) async throws -> Void)?
+    var onDownloadLLM: ((@escaping @Sendable (Double) -> Void) async throws -> Void)?
+    var onSetMirror: ((Bool) -> Void)?
+
+    func setMirror(_ on: Bool) { useMirror = on; onSetMirror?(on) }
 
     func downloadASR() {
-        busy = true; downloadProgress = 0
+        downloadProgress = 0
         status = NSLocalizedString("Downloading speech model…", comment: "setup status")
         Task {
             do {
@@ -28,8 +34,28 @@ final class SetupModel: ObservableObject {
             } catch {
                 status = NSLocalizedString("Download failed — check network / HuggingFace access", comment: "setup status")
             }
-            busy = false; downloadProgress = nil; refresh()
+            downloadProgress = nil; refresh()
         }
+    }
+
+    func downloadLLM() {
+        llmDownloadProgress = 0
+        status = NSLocalizedString("Downloading AI model…", comment: "setup status")
+        Task {
+            do {
+                try await onDownloadLLM? { p in Task { @MainActor in self.llmDownloadProgress = p } }
+                status = NSLocalizedString("AI model ready", comment: "setup status")
+            } catch {
+                status = NSLocalizedString("Download failed — check network / HuggingFace access", comment: "setup status")
+            }
+            llmDownloadProgress = nil; refresh()
+        }
+    }
+
+    var modelsPath: String { Self.modelsRoot.path(percentEncoded: false) }
+    func revealModelsFolder() {
+        try? FileManager.default.createDirectory(at: Self.modelsRoot, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(Self.modelsRoot)
     }
 
     func refresh() {
@@ -71,18 +97,31 @@ struct SetupView: View {
                 row("Speech (WhisperKit)", model.asrReady, nil)
                 if !model.asrReady {
                     HStack {
-                        Button(model.busy
+                        Button(model.downloadProgress != nil
                                ? NSLocalizedString("Downloading…", comment: "setup button")
                                : NSLocalizedString("Download speech model", comment: "setup button")) { model.downloadASR() }
-                            .disabled(model.busy)
+                            .disabled(model.downloadProgress != nil)
                         if let p = model.downloadProgress { ProgressView(value: p).frame(width: 160) }
                     }
                 }
                 row("LLM (\(model.llmModelID.isEmpty ? "local" : model.llmModelID))", model.llmReady, nil)
                 if !model.llmReady {
-                    Text("Missing LLM model → download it (or run `scripts/get-models.sh`), or pick “Rule-based only” in Providers. SaidDone never silently switches engines.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    HStack {
+                        Button(model.llmDownloadProgress != nil
+                               ? NSLocalizedString("Downloading…", comment: "setup button")
+                               : NSLocalizedString("Download AI model", comment: "setup button")) { model.downloadLLM() }
+                            .disabled(model.llmDownloadProgress != nil)
+                        if let p = model.llmDownloadProgress { ProgressView(value: p).frame(width: 160) }
+                    }
                 }
+                Toggle(NSLocalizedString("Downloads are slow? Use the China mirror (hf-mirror.com)", comment: "setup mirror"),
+                       isOn: Binding(get: { model.useMirror }, set: { model.setMirror($0) }))
+                    .font(.caption)
+                HStack(spacing: 6) {
+                    Image(systemName: "folder")
+                    Text("Saved to \(model.modelsPath)").lineLimit(1).truncationMode(.middle)
+                    Button("Show in Finder") { model.revealModelsFolder() }.buttonStyle(.link)
+                }.font(.caption).foregroundStyle(.secondary)
             }
             HStack {
                 Button(model.busy

@@ -34,11 +34,8 @@ public enum ProviderFactory {
     public static func makeLLM(_ config: AppConfig) -> LLMProvider {
         switch config.llm.location {
         case .local:
-            // "mlx-community/..." -> MLX Qwen; otherwise the deterministic rule-based cleaner.
-            if config.llm.modelID.hasPrefix("mlx-community/") {
-                return MLXQwenLLMProvider(modelID: config.llm.modelID)
-            }
-            return RuleBasedLLM()
+            // Local LLM = MLX Qwen (the provider sanitises any non-mlx id to the default model).
+            return MLXQwenLLMProvider(modelID: config.llm.modelID)
         case .cloud:
             let url = URL(string: config.cloud.llmBaseURL) ?? URL(string: "https://api.openai.com/v1")!
             return CloudLLMProvider(apiKey: config.cloud.llmKey, baseURL: url, model: config.cloud.llmModel,

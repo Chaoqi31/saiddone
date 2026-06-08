@@ -24,11 +24,12 @@ final class AppController: NSObject, NSApplicationDelegate {
     private let capture = AudioCapture()
     private let configStore: ConfigStore
     private var config: AppConfig
+    private let localization: LocalizationManager
 
     /// Which Mode is currently recording, nil = idle. Toggle (ADR-0006).
     private var activeMode: Mode?
 
-    // Providers built from config: local ASR ladder (Qwen3-ASR→0.6B→WhisperKit) + LLM ladder (MLX→RuleBased).
+    // Providers built from config: local ASR = WhisperKit, local LLM = MLX-Qwen (cloud if configured).
     private var asr: ASRProvider
     private var llm: LLMProvider
     private let historyStore: HistoryStore
@@ -55,10 +56,23 @@ final class AppController: NSObject, NSApplicationDelegate {
     private lazy var setupModel: SetupModel = {
         let m = SetupModel()
         m.llmModelID = config.llm.modelID
+        m.useMirror = !config.huggingFaceEndpoint.isEmpty
         m.onPrepare = { [weak self] in await self?.prewarm() }
         m.onDownloadASR = { [weak self] progress in
-            try await ModelDownloader.downloadWhisper(model: self?.config.asr.modelID ?? "openai_whisper-large-v3",
-                                                      progress: progress)
+            guard let self else { return }
+            try await ModelDownloader.downloadWhisper(model: self.config.asr.modelID,
+                                                      endpoint: self.config.huggingFaceEndpoint, progress: progress)
+        }
+        m.onDownloadLLM = { [weak self] progress in
+            guard let self else { return }
+            try await ModelDownloader.downloadMLX(repoID: self.config.llm.modelID,
+                                                  endpoint: self.config.huggingFaceEndpoint, progress: progress)
+        }
+        m.onSetMirror = { [weak self] on in
+            guard let self else { return }
+            var c = self.config
+            c.huggingFaceEndpoint = on ? "https://hf-mirror.com" : ""
+            self.applyConfig(c)
         }
         return m
     }()
@@ -70,12 +84,39 @@ final class AppController: NSObject, NSApplicationDelegate {
         self?.applyConfig(newConfig)
     }
 
+    // First-run wizard.
+    private var onboardingWindow: NSWindow?
+    private var onboardingTrying = false
+    private lazy var onboardingModel: OnboardingModel = {
+        let m = OnboardingModel()
+        m.launchAtLogin = config.launchAtLogin
+        m.dictationHotkey = config.dictationHotkey
+        m.translationHotkey = config.translationHotkey
+        m.rewriteHotkey = config.rewriteHotkey
+        m.appLanguage = localization.code
+        m.onSetLanguage = { [weak self] code in self?.localization.set(code) }
+        m.requestMic = { await Permissions.requestMicrophone() }
+        m.downloadWhisper = { model, endpoint, progress in
+            try await ModelDownloader.downloadWhisper(model: model, endpoint: endpoint, progress: progress)
+        }
+        m.downloadLLM = { repoID, endpoint, progress in
+            try await ModelDownloader.downloadMLX(repoID: repoID, endpoint: endpoint, progress: progress)
+        }
+        m.testCloud = { baseURL, key in await Self.testCloudConnection(baseURL: baseURL, key: key) }
+        m.applyDraft = { [weak self] in self?.applyOnboardingDraft() }
+        m.warmUp = { [weak self] in await self?.prewarm() }
+        m.tryToggle = { [weak self] in await self?.onboardingTryToggle() }
+        m.finishWizard = { [weak self] in self?.finishOnboarding() }
+        return m
+    }()
+
     override init() {
         let dir = (try? ConfigStore.defaultDirectory()) ?? FileManager.default.temporaryDirectory
         let store = ConfigStore(directory: dir)
         let cfg = store.load()
         self.configStore = store
         self.config = cfg
+        self.localization = LocalizationManager(override: cfg.appLanguage)
         self.asr = ProviderFactory.makeASR(cfg)
         self.llm = ProviderFactory.makeLLM(cfg)
         self.historyStore = HistoryStore(directory: dir)
@@ -92,8 +133,15 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         let n = registerHotkeys()
         slog("launched, \(n) hotkeys registered — ASR=\(asr.id) LLM=\(llm.id)")
-        Permissions.accessibilityTrusted(prompt: true)
         LoginItem.apply(config.launchAtLogin)
+
+        // First launch: run the setup wizard instead of prompting permissions / opening the main window.
+        if !config.onboardingCompleted {
+            openOnboarding()
+            return
+        }
+
+        Permissions.accessibilityTrusted(prompt: true)
         Task {
             _ = await Permissions.requestMicrophone()
             await prewarm()
@@ -144,8 +192,11 @@ final class AppController: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        let win = NSWindow(contentViewController: NSHostingController(
-            rootView: MainView(history: historyModel, dictionary: dictionaryModel, config: configModel, setup: setupModel)))
+        let root = LocalizedRoot(localization: localization) {
+            MainView(history: self.historyModel, dictionary: self.dictionaryModel,
+                     config: self.configModel, setup: self.setupModel)
+        }
+        let win = NSWindow(contentViewController: NSHostingController(rootView: root))
         win.title = "SaidDone"
         win.styleMask = [.titled, .closable, .miniaturizable, .resizable]
         win.isReleasedWhenClosed = false
@@ -154,6 +205,99 @@ final class AppController: NSObject, NSApplicationDelegate {
         win.center()
         win.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // MARK: Onboarding wizard
+
+    @objc private func openOnboarding() {
+        if let win = onboardingWindow {
+            win.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return
+        }
+        onboardingModel.refreshPermissions()
+        onboardingModel.refreshModelReadiness()
+        let root = LocalizedRoot(localization: localization) { OnboardingView(model: self.onboardingModel) }
+        let win = NSWindow(contentViewController: NSHostingController(rootView: root))
+        win.title = NSLocalizedString("Welcome to SaidDone", comment: "onboarding window title")
+        win.styleMask = [.titled, .closable]
+        win.isReleasedWhenClosed = false
+        win.center()
+        onboardingWindow = win
+        win.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Build a config from the wizard's draft engine choice. `complete` marks onboarding done + applies
+    /// the login-item preference (only at the final step).
+    private func configFromOnboarding(complete: Bool) -> AppConfig {
+        var c = config
+        c.asr = ProviderSelection(location: onboardingModel.asrLocal ? .local : .cloud, modelID: onboardingModel.asrModelID)
+        c.llm = ProviderSelection(location: onboardingModel.llmLocal ? .local : .cloud, modelID: onboardingModel.llmModelID)
+        c.cloud = onboardingModel.cloud
+        c.huggingFaceEndpoint = onboardingModel.endpoint
+        c.appLanguage = onboardingModel.appLanguage
+        c.dictationHotkey = onboardingModel.dictationHotkey
+        c.translationHotkey = onboardingModel.translationHotkey
+        c.rewriteHotkey = onboardingModel.rewriteHotkey
+        if complete {
+            c.launchAtLogin = onboardingModel.launchAtLogin
+            c.onboardingCompleted = true
+        }
+        return c
+    }
+
+    /// Commit the draft engine choice to the live providers so the Try-it step uses the real engines.
+    private func applyOnboardingDraft() { applyConfig(configFromOnboarding(complete: false)) }
+
+    private func finishOnboarding() {
+        applyConfig(configFromOnboarding(complete: true))
+        onboardingWindow?.close(); onboardingWindow = nil
+        Task { await prewarm() }
+        openMainWindow()
+    }
+
+    /// Start/stop a one-off test capture for the wizard's Try-it step. Result is shown in the wizard,
+    /// never inserted into another app.
+    private func onboardingTryToggle() async {
+        if onboardingTrying {
+            let audio = capture.stop()
+            capture.onLevel = nil
+            onboardingTrying = false
+            onboardingModel.tryRecording = false
+            onboardingModel.tryBusy = true
+            let mode: Mode = onboardingModel.tryMode == 1 ? .translation(target: "en") : .dictation
+            let orch = PipelineOrchestrator(asr: asr, llm: llm, dictionary: config.dictionary)
+            do {
+                let r = try await orch.run(audio, mode: mode, languageHint: config.asrLanguage)
+                onboardingModel.tryResult = r.text.isEmpty
+                    ? NSLocalizedString("(no speech detected — try again)", comment: "onboarding try")
+                    : r.text
+            } catch {
+                onboardingModel.tryResult = Self.friendlyError(error)
+            }
+            onboardingModel.tryBusy = false
+        } else {
+            do {
+                try capture.start()
+                onboardingTrying = true
+                onboardingModel.tryRecording = true
+                onboardingModel.tryResult = ""
+            } catch {
+                onboardingModel.tryResult = NSLocalizedString("Microphone error — check the permission.", comment: "onboarding try")
+            }
+        }
+    }
+
+    /// Minimal reachability check for an OpenAI-compatible endpoint: GET {baseURL}/models with the key.
+    static func testCloudConnection(baseURL: String, key: String) async -> Bool {
+        let trimmed = baseURL.hasSuffix("/") ? String(baseURL.dropLast()) : baseURL
+        guard !key.isEmpty, let url = URL(string: trimmed + "/models") else { return false }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization")
+        req.timeoutInterval = 12
+        do {
+            let (_, resp) = try await URLSession.shared.data(for: req)
+            return (resp as? HTTPURLResponse).map { (200..<300).contains($0.statusCode) } ?? false
+        } catch { return false }
     }
 
     /// Dictionary changes are read live at dictation time, so just persist — no provider rebuild.
@@ -189,6 +333,16 @@ final class AppController: NSObject, NSApplicationDelegate {
     /// Rebuild menu + icon for current state. Recording shows explicit Stop / Cancel.
     private func refreshUI() {
         let menu = NSMenu()
+
+        // Status header: which engines are active, plus a warning if a chosen local model is missing.
+        let engines = menuItem(engineSummary(), nil); engines.isEnabled = false
+        menu.addItem(engines)
+        if missingLocalModelMessage() != nil {
+            menu.addItem(menuItem(NSLocalizedString("Model not downloaded — open Setup", comment: "menu"),
+                                  #selector(openMainWindow), symbol: "exclamationmark.triangle.fill"))
+        }
+        menu.addItem(.separator())
+
         if let mode = activeMode {
             let label: String = {
                 switch mode {
@@ -209,6 +363,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         menu.addItem(.separator())
         menu.addItem(menuItem(NSLocalizedString("Open SaidDone…", comment: "menu"), #selector(openMainWindow), symbol: "macwindow"))
+        menu.addItem(menuItem(NSLocalizedString("Setup Assistant…", comment: "menu"), #selector(openOnboarding), symbol: "sparkles"))
         menu.addItem(.separator())
         menu.addItem(withTitle: NSLocalizedString("Quit SaidDone", comment: "menu"), action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         statusItem.menu = menu
@@ -281,10 +436,46 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private func toggle(_ mode: Mode) {
         if activeMode == nil {
+            // Fail fast (before recording) if a chosen local model isn't downloaded — clearer than a
+            // cryptic mid-pipeline error or a silent multi-GB download.
+            if let msg = missingLocalModelMessage() { overlay.showError(msg); return }
             startRecording(mode)
         } else {
             finishRecording()
         }
+    }
+
+    /// One-line summary of the active engines for the menu-bar status header.
+    private func engineSummary() -> String {
+        func loc(_ l: ProviderLocation) -> String {
+            l == .local ? NSLocalizedString("Local", comment: "engine location") : NSLocalizedString("Cloud", comment: "engine location")
+        }
+        let ai = config.llm.location == .local ? Self.shortLLMName(config.llm.modelID) : NSLocalizedString("Cloud", comment: "engine location")
+        return String(format: NSLocalizedString("Speech: %@ · AI: %@", comment: "menu engine summary"),
+                      loc(config.asr.location), ai)
+    }
+
+    /// "mlx-community/Qwen3-4B-4bit" -> "Qwen3 4B" for compact display.
+    private static func shortLLMName(_ id: String) -> String {
+        id.replacingOccurrences(of: "mlx-community/", with: "")
+          .replacingOccurrences(of: "-4bit", with: "")
+          .replacingOccurrences(of: "-", with: " ")
+    }
+
+    /// If a stage is set to a local engine whose model isn't on disk, an actionable message; else nil.
+    private func missingLocalModelMessage() -> String? {
+        let root = SetupModel.modelsRoot
+        if config.asr.location == .local,
+           !SetupModel.dirNonEmpty(root.appendingPathComponent("argmaxinc/whisperkit-coreml")) {
+            return NSLocalizedString("Speech model not downloaded — open Settings → Setup.", comment: "missing model")
+        }
+        if config.llm.location == .local {
+            let cfg = root.appendingPathComponent(config.llm.modelID).appendingPathComponent("config.json")
+            if !FileManager.default.fileExists(atPath: cfg.path) {
+                return NSLocalizedString("AI model not downloaded — open Settings → Setup.", comment: "missing model")
+            }
+        }
+        return nil
     }
 
     private func startRecording(_ mode: Mode) {
@@ -322,7 +513,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         if let pe = error as? ProviderError {
             switch pe {
-            case .notConfigured: return NSLocalizedString("Cloud not configured — add your key in Settings → Cloud.", comment: "error")
+            case .notConfigured: return NSLocalizedString("Cloud setup issue — check your API key and endpoint in Settings → Cloud.", comment: "error")
             case .modelUnavailable: return NSLocalizedString("Engine unavailable. Please try again shortly.", comment: "error")
             case .latencyBudgetExceeded: return NSLocalizedString("Timed out. Please try again.", comment: "error")
             }
@@ -367,6 +558,12 @@ final class AppController: NSObject, NSApplicationDelegate {
                 slog("RAW: '\(result.rawTranscript)'")
                 slog("pipeline done -> '\(result.text)' (\(String(format: "%.2f", result.elapsed))s)")
                 let finalText = self.config.voiceCommandsEnabled ? VoiceCommands.apply(result.text) : result.text
+                // No speech captured: don't insert an empty/garbage result or save an empty history row.
+                guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    slog("pipeline produced empty text — skipping insert")
+                    self.overlay.showError(NSLocalizedString("No speech detected — try again.", comment: "empty result"))
+                    return
+                }
                 // Save to history BEFORE inserting, so text is recoverable even if paste fails.
                 let modeStr: String = {
                     switch mode { case .translation: return "translation"; case .rewrite: return "rewrite"; default: return "dictation" }

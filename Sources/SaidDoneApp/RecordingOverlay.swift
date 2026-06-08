@@ -9,6 +9,7 @@ final class OverlayModel: ObservableObject {
     @Published var seconds: Int = 0
     @Published var label: String = "Recording"
     @Published var processing = false
+    @Published var slowHint = false          // shown when processing drags (first-run model load)
     @Published var errorText: String?
     @Published var doneText: String?
     @Published var previewText = ""
@@ -16,7 +17,7 @@ final class OverlayModel: ObservableObject {
     var onCancel: (() -> Void)?
 
     func pushLevel(_ v: Float) { level = v; levels.removeFirst(); levels.append(v) }
-    func reset() { level = 0; seconds = 0; processing = false; errorText = nil; doneText = nil; previewText = ""; levels = Array(repeating: 0, count: 30) }
+    func reset() { level = 0; seconds = 0; processing = false; slowHint = false; errorText = nil; doneText = nil; previewText = ""; levels = Array(repeating: 0, count: 30) }
 }
 
 /// Floating, click-through-except-buttons overlay: dot + waveform + timer + ✓/✕ while recording,
@@ -36,6 +37,7 @@ final class RecordingOverlay {
         self.panel = panel
         reposition(panel)
         panel.orderFrontRegardless()
+        announce(label)
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
             Task { @MainActor in
@@ -47,8 +49,13 @@ final class RecordingOverlay {
 
     /// Switch to the "processing" state (keep panel up with a spinner) after the user stops.
     func showProcessing() {
-        timer?.invalidate(); timer = nil
+        timer?.invalidate()
         model.processing = true
+        model.slowHint = false
+        // If the pipeline runs long (a cold first-run model load), say so instead of a silent spinner.
+        timer = Timer.scheduledTimer(withTimeInterval: 6.0, repeats: false) { [weak self] _ in
+            Task { @MainActor in if self?.model.processing == true { self?.model.slowHint = true } }
+        }
     }
 
     /// Briefly confirm success ("Inserted ✓") so finishing a dictation isn't silent, then dismiss.
@@ -61,6 +68,7 @@ final class RecordingOverlay {
         self.panel = panel
         reposition(panel)
         panel.orderFrontRegardless()
+        announce(message)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [weak self] in
             if self?.model.doneText == message { self?.hide() }
         }
@@ -75,6 +83,7 @@ final class RecordingOverlay {
         self.panel = panel
         reposition(panel)
         panel.orderFrontRegardless()
+        announce(message)
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
             if self?.model.errorText == message { self?.hide() }
         }
@@ -90,6 +99,14 @@ final class RecordingOverlay {
 
     func updateLevel(_ level: Float) { model.pushLevel(level) }
     func updatePreview(_ text: String) { model.previewText = text }
+
+    /// Announce a state change to VoiceOver — the floating HUD wouldn't otherwise be read aloud, so a
+    /// blind user has no idea recording started, a result was inserted, or an error occurred.
+    private func announce(_ text: String) {
+        NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested,
+                             userInfo: [.announcement: text,
+                                        .priority: NSAccessibilityPriorityLevel.high.rawValue])
+    }
 
     private func makePanel() -> NSPanel {
         let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 56),
@@ -136,7 +153,8 @@ private struct OverlayView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "waveform").foregroundStyle(.purple)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Processing…").font(.system(size: 12, weight: .medium))
+                        Text(model.slowHint ? "Loading model…" : "Processing…")
+                            .font(.system(size: 12, weight: .medium)).lineLimit(1)
                         ProgressView().progressViewStyle(.linear).frame(width: 200)
                     }
                     Spacer(minLength: 0)

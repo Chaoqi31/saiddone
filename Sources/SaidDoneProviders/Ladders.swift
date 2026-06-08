@@ -26,7 +26,7 @@ public struct FallbackASRProvider: ASRProvider {
 }
 
 /// LLM with per-operation fallback: try providers in order for polish/translate independently.
-/// e.g. [MLX-Qwen3.5, RuleBasedLLM] — Polish falls to deterministic rules if MLX unavailable.
+/// e.g. [MLX-Qwen, CloudLLM] — Polish tries each rung in order until one succeeds.
 public struct FallbackLLMProvider: LLMProvider {
     public let id = "llm-ladder"
     public let location: ProviderLocation

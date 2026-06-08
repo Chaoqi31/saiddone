@@ -207,7 +207,7 @@ private struct DictionaryPane: View {
                                                            set: { model.entries[i].right = $0 }))
                             .onSubmit { model.commit() }
                         Button { model.removeAt(i) } label: { Image(systemName: "trash") }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.borderless).help("Delete").accessibilityLabel("Delete")
                     }
                 }
             }
@@ -240,7 +240,7 @@ private struct HomePane: View {
                 }
 
                 if !setup.micGranted || !setup.axGranted {
-                    card("Finish setup", icon: "exclamationmark.triangle.fill") {
+                    card("Finish setup", icon: "exclamationmark.triangle.fill", attention: true) {
                         if !setup.micGranted { permRow("Microphone — needed to record", "Privacy_Microphone") }
                         if !setup.axGranted { permRow("Accessibility — needed to paste at cursor", "Privacy_Accessibility") }
                     }
@@ -276,7 +276,7 @@ private struct HomePane: View {
                                 Text(e.text).lineLimit(1).font(.callout)
                                 Spacer()
                                 Button { copyToClipboard(e.text) } label: { Image(systemName: "doc.on.doc") }
-                                    .buttonStyle(.borderless)
+                                    .buttonStyle(.borderless).help("Copy").accessibilityLabel("Copy")
                             }
                             if e.id != history.entries.prefix(3).last?.id { Divider() }
                         }
@@ -302,7 +302,7 @@ private struct HomePane: View {
     }
 
     private var appVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.1.0"
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.9.0"
     }
 
     private func permRow(_ label: LocalizedStringKey, _ pane: String) -> some View {
@@ -321,20 +321,27 @@ private struct HomePane: View {
 
     private func stat(_ value: String, _ label: LocalizedStringKey) -> some View {
         VStack(spacing: 2) {
-            Text(verbatim: value).font(.title2.weight(.semibold))
+            Text(verbatim: value).font(.title2.weight(.semibold)).foregroundStyle(.tint)
             Text(label).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func card(_ title: LocalizedStringKey, icon: String, @ViewBuilder _ content: () -> some View) -> some View {
+    private func card(_ title: LocalizedStringKey, icon: String, attention: Bool = false,
+                      @ViewBuilder _ content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(title, systemImage: icon).font(.headline)
+            Label { Text(title) } icon: {
+                Image(systemName: icon).foregroundStyle(attention ? Color.orange : Color.accentColor)
+            }
+            .font(.headline)
             content()
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
+        .background(attention ? Color.orange.opacity(0.08) : Color(nsColor: .controlBackgroundColor),
+                    in: RoundedRectangle(cornerRadius: 12))
+        .overlay(RoundedRectangle(cornerRadius: 12)
+            .strokeBorder(attention ? Color.orange.opacity(0.35) : Color.primary.opacity(0.08), lineWidth: 1))
     }
 
     private func shortcutRow(_ title: LocalizedStringKey, _ subtitle: LocalizedStringKey, _ keys: String) -> some View {

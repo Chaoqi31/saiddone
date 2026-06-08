@@ -84,18 +84,18 @@ struct SettingsView: View {
         Form {
             Section {
                 Picker("Primary spoken language", selection: Binding(
-                    get: { model.config.asrLanguage ?? "auto" },
-                    set: { model.config.asrLanguage = ($0 == "auto") ? nil : $0 }
+                    get: { model.config.asrLanguage ?? "" },
+                    set: { model.config.asrLanguage = $0.isEmpty ? nil : $0 }
                 )) {
-                    Text("Chinese (中文)").tag("zh")
-                    Text("English").tag("en")
-                    Text("Auto-detect").tag("auto")
+                    ForEach(Languages.spokenLanguages, id: \.code) { Text($0.name).tag($0.code) }
                 }
-                TextField("Translation target", text: $model.config.targetLanguage)
+                Picker("Translation target", selection: $model.config.targetLanguage) {
+                    ForEach(Languages.translationTargets, id: \.code) { Text($0.name).tag($0.code) }
+                }
             } header: {
                 Text("Language")
             } footer: {
-                Text("Match your main spoken language — auto-detect is unreliable for zh-en code-switching. Translation target is an ISO code like “en”.")
+                Text("Match your main spoken language — auto-detect is unreliable for zh-en code-switching.")
             }
 
             Section("Shortcuts") {
@@ -154,6 +154,9 @@ struct SettingsView: View {
                         Text("Whisper large-v3 — recommended, most accurate").tag("openai_whisper-large-v3")
                         Text("Whisper large-v3 turbo — faster, lighter").tag("openai_whisper-large-v3-v20240930_turbo")
                     }
+                    readinessRow(present: asrPresent(), progress: setup.downloadProgress) {
+                        model.save(); setup.downloadASR()
+                    }
                 } else {
                     LabeledContent("Model", value: cloudOrDash(model.config.cloud.asrModel))
                 }
@@ -172,10 +175,12 @@ struct SettingsView: View {
                 if model.config.llm.location == .local {
                     Picker("Local model", selection: $model.config.llm.modelID) {
                         Text("Qwen3 0.6B — fastest").tag("mlx-community/Qwen3-0.6B-4bit")
-                        Text("Qwen3 1.7B — default").tag("mlx-community/Qwen3-1.7B-4bit")
-                        Text("Qwen3 4B — better punctuation").tag("mlx-community/Qwen3-4B-4bit")
+                        Text("Qwen3 1.7B — faster").tag("mlx-community/Qwen3-1.7B-4bit")
+                        Text("Qwen3 4B — default, best Chinese").tag("mlx-community/Qwen3-4B-4bit")
                         Text("Qwen3 8B — best, heavy").tag("mlx-community/Qwen3-8B-4bit")
-                        Text("Rule-based only — no model").tag("rule-based")
+                    }
+                    readinessRow(present: llmPresent(), progress: setup.llmDownloadProgress) {
+                        model.save(); setup.downloadLLM()
                     }
                 } else {
                     LabeledContent("Model", value: cloudOrDash(model.config.cloud.llmModel))
@@ -194,6 +199,37 @@ struct SettingsView: View {
     /// Cloud value, or a hint pointing at the Cloud tab when unset.
     private func cloudOrDash(_ s: String) -> String {
         s.isEmpty ? NSLocalizedString("— set in Cloud tab", comment: "providers cloud model unset") : s
+    }
+
+    /// Whether the currently-selected local models are present on disk (checked live, per exact model).
+    private func asrPresent() -> Bool {
+        let dir = SetupModel.modelsRoot.appendingPathComponent("argmaxinc/whisperkit-coreml")
+            .appendingPathComponent(model.config.asr.modelID)
+        return SetupModel.dirNonEmpty(dir)
+    }
+    private func llmPresent() -> Bool {
+        let cfg = SetupModel.modelsRoot.appendingPathComponent(model.config.llm.modelID)
+            .appendingPathComponent("config.json")
+        return FileManager.default.fileExists(atPath: cfg.path)
+    }
+
+    /// Inline download status for a local model: ready ✓, in-progress, or a Download button.
+    @ViewBuilder
+    private func readinessRow(present: Bool, progress: Double?, download: @escaping () -> Void) -> some View {
+        if present {
+            Label("Downloaded", systemImage: "checkmark.circle.fill").foregroundStyle(.green).font(.callout)
+        } else if let progress {
+            HStack {
+                ProgressView(value: progress).frame(width: 160)
+                Text("Downloading…").font(.caption).foregroundStyle(.secondary)
+            }
+        } else {
+            HStack {
+                Label("Not downloaded", systemImage: "arrow.down.circle").foregroundStyle(.orange).font(.callout)
+                Spacer()
+                Button("Download", action: download)
+            }
+        }
     }
 
     // MARK: Cloud

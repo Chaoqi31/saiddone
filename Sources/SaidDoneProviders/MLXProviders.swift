@@ -2,6 +2,7 @@ import Foundation
 import SaidDoneCore
 import MLXLLM
 import MLXLMCommon
+import Hub
 
 /// Default local ASR per ADR-0003: Qwen3-ASR (1.7B / 0.6B) via MLX.
 ///
@@ -28,17 +29,17 @@ public actor MLXQwenASRProvider: ASRProvider {
 /// Default local LLM (ADR-0004) via MLX-LM (mlx-swift-examples), doing Polish + Translate on-device.
 ///
 /// Note: ADR-0004 specified Qwen3.5-0.8B, but Qwen3.5 is not yet published in mlx-community format.
-/// Default here is the newest available small Qwen in MLX: Qwen3-1.7B-4bit (strong Chinese, ~1GB).
-/// Swap `hubID` once a Qwen3.5 MLX build exists.
+/// Default here is Qwen3-4B-4bit (best small-model Chinese polish; ~2.3GB). Smaller (0.6B/1.7B) and
+/// larger (8B) are selectable in Settings. Swap once a Qwen3.5 MLX build exists.
 public actor MLXQwenLLMProvider: LLMProvider {
     public nonisolated let id: String
     public nonisolated let location: ProviderLocation = .local
     private let hubID: String
     private var container: ModelContainer?
 
-    public init(modelID: String = "mlx-community/Qwen3-1.7B-4bit") {
+    public init(modelID: String = "mlx-community/Qwen3-4B-4bit") {
         // Map our config model ids to a real MLX hub id.
-        self.hubID = modelID.hasPrefix("mlx-community/") ? modelID : "mlx-community/Qwen3-1.7B-4bit"
+        self.hubID = modelID.hasPrefix("mlx-community/") ? modelID : "mlx-community/Qwen3-4B-4bit"
         self.id = "mlx-qwen-llm:\(hubID)"
     }
 
@@ -46,26 +47,41 @@ public actor MLXQwenLLMProvider: LLMProvider {
         if let container { return container }
         // Prefer a local snapshot to bypass the Hub network path (swift-transformers has a
         // CheckedContinuation crash under strict concurrency). Falls back to id-based download.
-        let base = URL.documentsDirectory
-            .appending(path: "huggingface/models", directoryHint: .isDirectory)
+        let hfBase = URL.documentsDirectory.appending(path: "huggingface", directoryHint: .isDirectory)
+        let base = hfBase.appending(path: "models", directoryHint: .isDirectory)
             .appending(path: hubID, directoryHint: .isDirectory)
         let localConfig = base.appending(path: "config.json")
-        let config: ModelConfiguration = FileManager.default.fileExists(atPath: localConfig.path)
+        let hasLocal = FileManager.default.fileExists(atPath: localConfig.path)
+        let config: ModelConfiguration = hasLocal
             ? ModelConfiguration(directory: base)
             : ModelConfiguration(id: hubID)
-        let c = try await loadModelContainer(configuration: config)
+        // When the weights are already on disk, load fully offline so we never round-trip to
+        // HuggingFace for tokenizer/config — that network check is slow (or blocked) on some networks
+        // and needlessly inflates cold-load time. Only allow the network when we still need to fetch.
+        let hub = HubApi(downloadBase: hfBase, useOfflineMode: hasLocal ? true : nil)
+        let c = try await loadModelContainer(hub: hub, configuration: config)
         container = c
         return c
     }
 
     private func run(instructions: String, prompt: String) async throws -> String {
         let container = try await loaded()
-        let params = GenerateParameters(maxTokens: 256, temperature: 0.0)
-        // NOTE: ChatSession.respond() overwrites messages, dropping the `instructions:` system prompt,
-        // so embed the instruction directly in the user turn. "/no_think" disables Qwen3 reasoning.
-        let session = ChatSession(container, generateParameters: params)
-        let full = "\(instructions) /no_think\n\nText:\n\(prompt)"
-        let out = try await session.respond(to: full)
+        // Scale output headroom with input length so long dictation isn't truncated (Chinese ≈ 1 token
+        // per character); keep a floor for short clips and a ceiling to bound worst-case latency.
+        let maxTokens = min(2048, max(512, prompt.count * 2))
+        let params = GenerateParameters(maxTokens: maxTokens, temperature: 0.0)
+        // Build a real system + user chat. ChatSession.respond() resets the message list to JUST the
+        // user turn (dropping any `instructions:` system prompt), which made a small model echo the
+        // rules back as output. Preparing the chat one level down keeps the system role intact, so the
+        // model TRANSFORMS the user text instead of continuing the instructions. "/no_think" turns off
+        // Qwen3 reasoning so we don't generate (and then strip) a <think> block.
+        let sys = instructions + " /no_think"   // Strings are Sendable; build the messages inside perform.
+        let out = try await container.perform { (context: ModelContext) -> String in
+            let messages: [Chat.Message] = [.system(sys), .user(prompt)]
+            let input = try await context.processor.prepare(input: UserInput(chat: messages))
+            let result = try MLXLMCommon.generate(input: input, parameters: params, context: context) { (_: [Int]) in .more }
+            return result.output
+        }
         return Self.sanitize(out)
     }
 
@@ -82,11 +98,9 @@ public actor MLXQwenLLMProvider: LLMProvider {
 
     public func polish(_ text: String, context: PolishContext) async throws -> String {
         let out = try await run(instructions: polishSystemPrompt(context: context), prompt: text)
-        // Guard: a small LLM sometimes collapses the whole utterance to a fragment. If the output
-        // is implausibly short vs input, treat as failure so the ladder falls back to RuleBasedLLM.
-        if !text.isEmpty, out.count < max(4, text.count / 3) {
-            throw ProviderError.modelUnavailable("\(id) polish output implausibly short — falling back")
-        }
+        // Guard: a small LLM sometimes collapses the whole utterance to a fragment. Rather than emit
+        // garbage, fall back to the (dictionary-corrected) raw transcript — never lose the user's words.
+        if !text.isEmpty, out.count < max(4, text.count / 3) { return text }
         return out
     }
 

@@ -36,7 +36,7 @@ guard !specs.isEmpty else { print("usage: SaidDoneSpike 'path|mode|lang' ..."); 
 // provider setup — including cloud DeepSeek when the app is set to cloud.
 let cfgDir = (try? ConfigStore.defaultDirectory()) ?? FileManager.default.temporaryDirectory
 var cfg = ConfigStore(directory: cfgDir).load()
-if let m = ProcessInfo.processInfo.environment["SAIDDONE_LLM"] { cfg.llm.modelID = m; cfg.llm.location = m == "rule-based" ? .local : cfg.llm.location }
+if let m = ProcessInfo.processInfo.environment["SAIDDONE_LLM"] { cfg.llm.modelID = m }
 if let l = ProcessInfo.processInfo.environment["SAIDDONE_ASR_LANG"] { cfg.asrLanguage = (l == "auto") ? nil : l }
 let orch = PipelineOrchestrator(asr: ProviderFactory.makeASR(cfg), llm: ProviderFactory.makeLLM(cfg))
 

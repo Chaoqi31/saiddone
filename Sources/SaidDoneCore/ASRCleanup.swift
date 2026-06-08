@@ -1,7 +1,7 @@
 import Foundation
 
 /// Deterministic cleanup of common ASR hallucinations (Whisper/Qwen emit these on silence/noise),
-/// applied to every transcript before polish so even the rule-based path stays clean.
+/// applied to every transcript before polish so the LLM sees clean input.
 public enum ASRCleanup {
     /// Phrases Whisper-family models hallucinate on silence — never real dictation. Simplified + Traditional.
     static let hallucinations: [String] = [

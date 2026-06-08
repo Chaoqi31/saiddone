@@ -1,6 +1,48 @@
 import Foundation
 import SaidDoneCore
 
+/// Shared HTTP execution for cloud providers: bounded by the request's timeout, retries transient
+/// failures (network drops, 408/429/5xx) with quadratic backoff, and maps status codes to the right
+/// ProviderError so the user sees an accurate message (auth vs. busy vs. timeout).
+enum CloudHTTP {
+    static func send(label: String, maxRetries: Int = 2,
+                     _ perform: () async throws -> (Data, URLResponse)) async throws -> Data {
+        var attempt = 0
+        while true {
+            do {
+                let (data, response) = try await perform()
+                guard let http = response as? HTTPURLResponse else {
+                    throw ProviderError.modelUnavailable("\(label): no HTTP response")
+                }
+                switch http.statusCode {
+                case 200..<300:
+                    return data
+                case 401, 403:
+                    throw ProviderError.notConfigured("\(label): unauthorized (\(http.statusCode))")
+                case 408, 429, 500...599:
+                    if attempt < maxRetries { attempt += 1; try? await backoff(attempt); continue }
+                    throw ProviderError.modelUnavailable("\(label): server busy (\(http.statusCode))")
+                default:
+                    let snippet = String(data: data.prefix(180), encoding: .utf8) ?? ""
+                    throw ProviderError.notConfigured("\(label): HTTP \(http.statusCode) \(snippet)")
+                }
+            } catch let e as URLError {
+                let transient: Set<URLError.Code> = [
+                    .timedOut, .networkConnectionLost, .cannotConnectToHost,
+                    .notConnectedToInternet, .dnsLookupFailed, .cannotFindHost,
+                ]
+                if transient.contains(e.code), attempt < maxRetries { attempt += 1; try? await backoff(attempt); continue }
+                if e.code == .timedOut { throw ProviderError.latencyBudgetExceeded }
+                throw e   // non-transient network error — friendlyError maps it
+            }
+        }
+    }
+
+    private static func backoff(_ attempt: Int) async throws {
+        try await Task.sleep(for: .milliseconds(400 * attempt * attempt))   // 400ms, 1.6s
+    }
+}
+
 /// Cloud LLM via an OpenAI-compatible Chat Completions endpoint (ADR-0001 co-equal cloud path).
 /// Opt-in: requires a user-provided key. Data leaves the device — caller must disclose this (GOALS).
 public struct CloudLLMProvider: LLMProvider {
@@ -39,6 +81,7 @@ public struct CloudLLMProvider: LLMProvider {
         guard !apiKey.isEmpty else { throw ProviderError.notConfigured("cloud LLM API key missing") }
         var req = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
         req.httpMethod = "POST"
+        req.timeoutInterval = 30
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         let body: [String: Any] = [
@@ -51,15 +94,12 @@ public struct CloudLLMProvider: LLMProvider {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw ProviderError.notConfigured("cloud LLM HTTP error")
-        }
+        let data = try await CloudHTTP.send(label: "cloud LLM") { try await session.data(for: req) }
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any],
               let content = message["content"] as? String else {
-            throw ProviderError.notConfigured("cloud LLM: unexpected response")
+            throw ProviderError.modelUnavailable("cloud LLM: unexpected response")
         }
         return content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -88,6 +128,7 @@ public struct CloudASRProvider: ASRProvider {
         let boundary = "saiddone-\(UInt64(audio.samples.count))-boundary"
         var req = URLRequest(url: baseURL.appendingPathComponent("audio/transcriptions"))
         req.httpMethod = "POST"
+        req.timeoutInterval = 60   // audio upload can be larger/slower than a chat call
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
 
@@ -104,15 +145,12 @@ public struct CloudASRProvider: ASRProvider {
         body.append(audio.wavData())
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
 
-        let (data, response) = try await session.upload(for: req, from: body)
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw ProviderError.notConfigured("cloud ASR HTTP error")
-        }
+        let data = try await CloudHTTP.send(label: "cloud ASR") { try await session.upload(for: req, from: body) }
         if let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let text = json["text"] as? String {
             return text.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        throw ProviderError.notConfigured("cloud ASR: unexpected response")
+        throw ProviderError.modelUnavailable("cloud ASR: unexpected response")
     }
 }
 

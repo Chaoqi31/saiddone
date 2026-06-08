@@ -11,40 +11,49 @@ SWIFT="$TMP/makeicon.swift"
 cat > "$SWIFT" <<'SWIFTEOF'
 import AppKit
 let S = 1024.0
+// Rounded square fills ~90% of the canvas with a small transparent margin (room for the OS drop
+// shadow). The strict ~80% grid read visibly smaller than the real-world Dock icons next to it.
+let m = 52.0, C = 920.0, f = 920.0 / 1024.0
+func tx(_ v: Double) -> Double { m + v * f }   // map original 1024-design coord into the inset grid
+func ts(_ v: Double) -> Double { v * f }        // scale a length/radius into the grid
+
 let img = NSImage(size: NSSize(width: S, height: S))
 img.lockFocus()
 let bg = NSColor(srgbRed: 0.055, green: 0.055, blue: 0.067, alpha: 1)
-let rect = NSRect(x: 0, y: 0, width: S, height: S)
 
-// Near-black macOS squircle.
-NSBezierPath(roundedRect: rect, xRadius: S * 0.225, yRadius: S * 0.225).addClip()
-bg.setFill(); rect.fill()
+// Near-black squircle (inset; canvas stays transparent around it).
+let sq = NSRect(x: m, y: m, width: C, height: C)
+let squircle = NSBezierPath(roundedRect: sq, xRadius: C * 0.2237, yRadius: C * 0.2237)
+NSGraphicsContext.saveGraphicsState()
+squircle.addClip()
+bg.setFill(); sq.fill()
 
 // White speech bubble + bottom-left tail.
-let bx = 242.0, by = 392.0, bw = 540.0, bh = 392.0, r = 150.0
-let bubble = NSBezierPath(roundedRect: NSRect(x: bx, y: by, width: bw, height: bh), xRadius: r, yRadius: r)
+let bubble = NSBezierPath(roundedRect: NSRect(x: tx(242), y: tx(392), width: ts(540), height: ts(392)),
+                          xRadius: ts(150), yRadius: ts(150))
 let tail = NSBezierPath()
-tail.move(to: NSPoint(x: 322, y: by + 40))
-tail.line(to: NSPoint(x: 486, y: by + 40))
-tail.line(to: NSPoint(x: 312, y: 300))
+tail.move(to: NSPoint(x: tx(322), y: tx(432)))
+tail.line(to: NSPoint(x: tx(486), y: tx(432)))
+tail.line(to: NSPoint(x: tx(312), y: tx(300)))
 tail.close()
 NSColor.white.setFill()
 bubble.fill(); tail.fill()
 
 // Checkmark as negative space (stroke in the background color over the white bubble).
 let chk = NSBezierPath()
-chk.move(to: NSPoint(x: 424, y: 576))
-chk.line(to: NSPoint(x: 500, y: 498))
-chk.line(to: NSPoint(x: 658, y: 666))
-chk.lineWidth = 66
+chk.move(to: NSPoint(x: tx(424), y: tx(576)))
+chk.line(to: NSPoint(x: tx(500), y: tx(498)))
+chk.line(to: NSPoint(x: tx(658), y: tx(666)))
+chk.lineWidth = ts(66)
 chk.lineCapStyle = .round
 chk.lineJoinStyle = .round
 bg.setStroke(); chk.stroke()
+NSGraphicsContext.restoreGraphicsState()
 
-// Hairline inner highlight for a touch of polish.
-let inset = rect.insetBy(dx: S * 0.018, dy: S * 0.018)
-let border = NSBezierPath(roundedRect: inset, xRadius: S * 0.205, yRadius: S * 0.205)
-border.lineWidth = S * 0.008
+// Hairline highlight on the squircle edge.
+let border = NSBezierPath(roundedRect: sq.insetBy(dx: ts(14), dy: ts(14)),
+                          xRadius: C * 0.205, yRadius: C * 0.205)
+border.lineWidth = ts(8)
 NSColor.white.withAlphaComponent(0.08).setStroke(); border.stroke()
 
 img.unlockFocus()

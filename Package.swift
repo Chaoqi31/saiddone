@@ -12,9 +12,12 @@ let package = Package(
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "1.0.0"),
         .package(url: "https://github.com/ml-explore/mlx-swift-examples", from: "2.29.1"),
         .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.29.0"),
+        // HuggingFace Hub client (already resolved transitively); used directly to download models
+        // into ~/Documents/huggingface with an optional mirror endpoint (ModelDownloader).
+        .package(url: "https://github.com/huggingface/swift-transformers", from: "1.0.0"),
     ],
     targets: [
-        // Pure logic: protocols, pipeline, dictionary, profiles, config, rule-based polish. No external deps.
+        // Pure logic: protocols, pipeline, dictionary, profiles, config. No external deps.
         .target(name: "SaidDoneCore"),
         // Concrete Providers (real engines + scaffolds + ladder + factory).
         .target(
@@ -24,6 +27,7 @@ let package = Package(
                 .product(name: "WhisperKit", package: "WhisperKit"),
                 .product(name: "MLXLLM", package: "mlx-swift-examples"),
                 .product(name: "MLXLMCommon", package: "mlx-swift-examples"),
+                .product(name: "Hub", package: "swift-transformers"),
             ]
         ),
         // Menu-bar app shell: capture, hotkey, insertion, UI.

@@ -35,12 +35,11 @@ final class LadderTests: XCTestCase {
         } catch { /* expected */ }
     }
 
-    func testLLMPolishFallsToRuleBased() async throws {
-        // First rung throws -> deterministic RuleBasedLLM floor takes over.
-        // (Use a clean throwing stub, not the real MLX provider, which loads a model at runtime.)
-        let ladder = FallbackLLMProvider([ThrowingLLM(), RuleBasedLLM()])
+    func testLLMPolishFallsToNextRung() async throws {
+        // First rung throws -> ladder falls through to the next working rung (EchoLLM).
+        let ladder = FallbackLLMProvider([ThrowingLLM(), EchoLLMProvider()])
         let out = try await ladder.polish("um  hello", context: .none)
-        XCTAssertEqual(out, "Hello.")
+        XCTAssertEqual(out, "um hello")   // EchoLLM collapses whitespace, no rule cleanup
     }
 
     // Note: factory default location is covered by SaidDoneCoreTests.testDefaultIsZeroKeyLocal.

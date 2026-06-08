@@ -39,7 +39,7 @@ public struct CloudConfig: Codable, Sendable, Equatable {
     public init() {}
 
     /// Lenient decode: missing keys fall back to defaults, so adding fields never breaks an existing
-    /// config.json (a strict decode here once silently reset the whole config to local rule-based).
+    /// config.json (a strict decode here once silently reset the whole config to the local default).
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         llmKey = try c.decodeIfPresent(String.self, forKey: .llmKey) ?? ""
@@ -88,6 +88,12 @@ public struct AppConfig: Codable, Sendable {
     /// Personalization: the user's background/profession/jargon, fed to the Polish LLM (like
     /// ChatGPT custom instructions) so it handles their terminology and code-switching well.
     public var userProfile: String
+    /// Whether the first-run onboarding wizard has completed (gates showing it at launch).
+    public var onboardingCompleted: Bool
+    /// HuggingFace download endpoint override. "" = huggingface.co; "https://hf-mirror.com" for China.
+    public var huggingFaceEndpoint: String
+    /// UI language override: "" = follow the system; otherwise an lproj code like "en" / "zh-Hans".
+    public var appLanguage: String
 
     public init(
         dictationHotkey: Hotkey,
@@ -107,8 +113,14 @@ public struct AppConfig: Codable, Sendable {
         showLivePreview: Bool = false,
         preferBuiltInMic: Bool = false,
         cloud: CloudConfig = .init(),
-        userProfile: String = ""
+        userProfile: String = "",
+        onboardingCompleted: Bool = false,
+        huggingFaceEndpoint: String = "",
+        appLanguage: String = ""
     ) {
+        self.onboardingCompleted = onboardingCompleted
+        self.huggingFaceEndpoint = huggingFaceEndpoint
+        self.appLanguage = appLanguage
         self.launchAtLogin = launchAtLogin
         self.autoCopyToClipboard = autoCopyToClipboard
         self.soundsEnabled = soundsEnabled
@@ -152,6 +164,9 @@ public struct AppConfig: Codable, Sendable {
         preferBuiltInMic = try c.decodeIfPresent(Bool.self, forKey: .preferBuiltInMic) ?? false
         cloud = try c.decodeIfPresent(CloudConfig.self, forKey: .cloud) ?? .init()
         userProfile = try c.decodeIfPresent(String.self, forKey: .userProfile) ?? ""
+        onboardingCompleted = try c.decodeIfPresent(Bool.self, forKey: .onboardingCompleted) ?? false
+        huggingFaceEndpoint = try c.decodeIfPresent(String.self, forKey: .huggingFaceEndpoint) ?? ""
+        appLanguage = try c.decodeIfPresent(String.self, forKey: .appLanguage) ?? ""
     }
 
     /// Zero-key local defaults (GOALS B4). Hotkeys: ⌃⌥D (dictation), ⌃⌥T (translation) — avoid
@@ -161,7 +176,7 @@ public struct AppConfig: Codable, Sendable {
         translationHotkey: Hotkey(keyCode: 17, modifiers: 0x040000 | 0x080000), // ⌃⌥ + T
         rewriteHotkey: Hotkey(keyCode: 15, modifiers: 0x040000 | 0x080000),    // ⌃⌥ + R
         asr: ProviderSelection(location: .local, modelID: "openai_whisper-large-v3-v20240930_turbo"),
-        llm: ProviderSelection(location: .local, modelID: "qwen3.5-0.8b")
+        llm: ProviderSelection(location: .local, modelID: "mlx-community/Qwen3-4B-4bit")
     )
 }
 
