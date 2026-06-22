@@ -1,6 +1,6 @@
 import Foundation
 import SaidDoneCore
-import WhisperKit
+@preconcurrency import WhisperKit
 
 /// Real local ASR via WhisperKit (ADR-0003 fallback engine; also the working baseline today).
 /// Downloads the model on first use. languageHint nil = auto-detect (needed for zh-en, GOALS A2).
