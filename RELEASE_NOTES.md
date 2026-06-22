@@ -1,22 +1,21 @@
-# SaidDone v1.0.0
+# SaidDone v1.1.0
 
-First stable release. Local-first voice-to-text for macOS — press a hotkey, speak, and polished text lands at your cursor in any app.
+Typeless-style three modes, smarter zh-en polish, and more reliable recording.
 
-## What's new in v1.0
+## What's new in v1.1
 
-- **Faster dictation** — optional “insert draft immediately, then polish in place” (see Settings → General)
-- **Deterministic progress bar** — 0→1 overlay with transcribe / polish / insert stages
-- **Mouse side-button shortcuts** — bind dictation to a mouse button (needs Accessibility)
-- **Cloud polish timeout** — auto-extends for long speech so polish is not skipped
-- **Keychain for API keys** — never stored in exported JSON
-- **`.env` support** — drop `DEEPSEEK_API_KEY` in `~/Library/Application Support/SaidDone/.env`
-- **History metadata** — shows pipeline time and “unpolished” when polish was skipped
+- **Three modes like Typeless** — Voice Input `⌃⌥D`, Translation `⌃⌥T`, Ask Anything `⌃⌥A` (edit selected text or ask a question)
+- **Smarter zh-en polish** — LLM uses context to fix obvious ASR mis-hearings in mixed Chinese/English speech
+- **More reliable mic capture** — auto-restart input when audio route changes (Bluetooth connect/disconnect); clearer errors when no audio is captured
+- **Polish safety** — never drop your words: empty polish falls back to the ASR draft; fast-insert draft is kept if polish fails
+- **Settings migration** — old `rewriteHotkey` in config.json maps to Ask Anything automatically
 
 ## Install
 
-1. Download `SaidDone.dmg` from [Releases](../../releases) or build with `./scripts/release.sh`
-2. Open and drag to Applications; allow past Gatekeeper once (see [INSTALL.md](INSTALL.md))
-3. Complete the Setup Assistant
+1. Download **`SaidDone.dmg`** from [Releases](../../releases/latest)
+2. Open the DMG → drag **SaidDone** to **Applications**
+3. First launch: allow past Gatekeeper once (see [INSTALL.md](INSTALL.md))
+4. Complete the **Setup Assistant** (mic + Accessibility + engines)
 
 ## Requirements
 
@@ -28,10 +27,10 @@ First stable release. Local-first voice-to-text for macOS — press a hotkey, sp
 
 | Shortcut | Mode |
 |---|---|
-| `⌃⌥D` | Dictation |
-| `⌃⌥T` | Translation |
-| `⌃⌥R` | Rewrite selected text |
+| `⌃⌥D` | Voice Input — speak, insert at cursor |
+| `⌃⌥T` | Translation — speak one language, insert target language |
+| `⌃⌥A` | Ask Anything — edit/query selection or ask a question |
 
-All rebindable in Settings — including mouse buttons.
+All rebindable in Settings — including mouse side buttons.
 
 MIT licensed.

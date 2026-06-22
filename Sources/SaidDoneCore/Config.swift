@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 /// A global shortcut: keyboard (Carbon keycode + modifiers) or a mouse button (NSEvent.buttonNumber).
-public struct Hotkey: Codable, Sendable, Equatable {
+public struct Hotkey: Codable, Sendable, Equatable, Hashable {
     public var keyCode: UInt32
     public var modifiers: UInt
     /// When set, fires on this mouse button instead of a keyboard key.
@@ -146,7 +146,7 @@ public struct KeychainSecrets: Sendable {
 public struct AppConfig: Codable, Sendable {
     public var dictationHotkey: Hotkey
     public var translationHotkey: Hotkey
-    public var rewriteHotkey: Hotkey
+    public var askHotkey: Hotkey
     public var targetLanguage: String
     /// Primary spoken language for ASR (e.g. "zh", "en"); nil = auto-detect. Code-switch transcription
     /// works best when this matches your primary language (WhisperKit auto-detect is unreliable for mixing).
@@ -191,7 +191,7 @@ public struct AppConfig: Codable, Sendable {
     public init(
         dictationHotkey: Hotkey,
         translationHotkey: Hotkey,
-        rewriteHotkey: Hotkey,
+        askHotkey: Hotkey,
         targetLanguage: String = "en",
         asrLanguage: String? = "zh",
         asr: ProviderSelection,
@@ -229,7 +229,7 @@ public struct AppConfig: Codable, Sendable {
         self.userProfile = userProfile
         self.dictationHotkey = dictationHotkey
         self.translationHotkey = translationHotkey
-        self.rewriteHotkey = rewriteHotkey
+        self.askHotkey = askHotkey
         self.targetLanguage = targetLanguage
         self.asrLanguage = asrLanguage
         self.asr = asr
@@ -240,12 +240,24 @@ public struct AppConfig: Codable, Sendable {
 
     /// Lenient decode: missing keys fall back to defaults so adding config fields never wipes a
     /// user's existing config.json.
+    enum CodingKeys: String, CodingKey {
+        case dictationHotkey, translationHotkey, askHotkey
+        case targetLanguage, asrLanguage, asr, llm, dictionary, appProfiles
+        case launchAtLogin, autoCopyToClipboard, soundsEnabled, muteAudioWhileRecording
+        case voiceCommandsEnabled, showLivePreview, llmTimeoutSeconds, preferBuiltInMic
+        case cloud, userProfile, onboardingCompleted, huggingFaceEndpoint, appLanguage
+        case fastInsertBeforePolish
+    }
+
+    private enum LegacyCodingKeys: String, CodingKey { case rewriteHotkey }
+
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         dictationHotkey = try c.decode(Hotkey.self, forKey: .dictationHotkey)
         translationHotkey = try c.decode(Hotkey.self, forKey: .translationHotkey)
-        rewriteHotkey = try c.decodeIfPresent(Hotkey.self, forKey: .rewriteHotkey)
-            ?? Hotkey(keyCode: 15, modifiers: 0x040000 | 0x080000)
+        askHotkey = try c.decodeIfPresent(Hotkey.self, forKey: .askHotkey)
+            ?? (try? decoder.container(keyedBy: LegacyCodingKeys.self).decodeIfPresent(Hotkey.self, forKey: .rewriteHotkey))
+            ?? Hotkey(keyCode: 0, modifiers: 0x040000 | 0x080000)
         targetLanguage = try c.decodeIfPresent(String.self, forKey: .targetLanguage) ?? "en"
         asrLanguage = try c.decodeIfPresent(String.self, forKey: .asrLanguage)
         asr = try c.decode(ProviderSelection.self, forKey: .asr)
@@ -268,12 +280,11 @@ public struct AppConfig: Codable, Sendable {
         fastInsertBeforePolish = try c.decodeIfPresent(Bool.self, forKey: .fastInsertBeforePolish) ?? true
     }
 
-    /// Zero-key local defaults (GOALS B4). Hotkeys: ⌃⌥D (dictation), ⌃⌥T (translation) — avoid
-    /// ⌥Space (macOS input-source switch) and other system conflicts.
+    /// Zero-key local defaults (GOALS B4). Hotkeys: ⌃⌥D (voice input), ⌃⌥T (translation), ⌃⌥A (ask).
     public static let `default` = AppConfig(
         dictationHotkey: Hotkey(keyCode: 2, modifiers: 0x040000 | 0x080000),   // ⌃⌥ + D
         translationHotkey: Hotkey(keyCode: 17, modifiers: 0x040000 | 0x080000), // ⌃⌥ + T
-        rewriteHotkey: Hotkey(keyCode: 15, modifiers: 0x040000 | 0x080000),    // ⌃⌥ + R
+        askHotkey: Hotkey(keyCode: 0, modifiers: 0x040000 | 0x080000),        // ⌃⌥ + A
         asr: ProviderSelection(location: .local, modelID: "openai_whisper-large-v3-v20240930_turbo"),
         llm: ProviderSelection(location: .local, modelID: "mlx-community/Qwen3-4B-4bit")
     )

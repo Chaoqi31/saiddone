@@ -97,7 +97,7 @@ public actor MLXQwenLLMProvider: LLMProvider {
     }
 
     public func polish(_ text: String, context: PolishContext) async throws -> String {
-        let out = try await run(instructions: polishSystemPrompt(context: context), prompt: text)
+        let out = try await run(instructions: PolishPrompt.system(context: context), prompt: text)
         // Guard: a small LLM sometimes collapses the whole utterance to a fragment. Rather than emit
         // garbage, fall back to the (dictionary-corrected) raw transcript — never lose the user's words.
         if !text.isEmpty, out.count < max(4, text.count / 3) { return text }
@@ -110,9 +110,14 @@ public actor MLXQwenLLMProvider: LLMProvider {
         return try await run(instructions: sys, prompt: text)
     }
 
-    public func rewrite(_ instruction: String, selection: String, context: PolishContext) async throws -> String {
-        let sys = "你是文本改写助手。根据指令改写【原文】，若原文为空则按指令生成。中文用简体。只输出结果，不要解释、不要引号。"
-        let prompt = selection.isEmpty ? "指令：\(instruction)" : "指令：\(instruction)\n\n【原文】：\(selection)"
+    public func ask(_ question: String, selection: String, context: PolishContext) async throws -> String {
+        let sys = """
+        你是智能助手。用户用语音提出了请求。
+        - 若有【原文】：按请求编辑，或回答关于原文的问题（摘要、解释、翻译等）。
+        - 若无原文：直接回答或按请求生成内容。
+        中文用简体。只输出结果，不要解释、不要引号。
+        """
+        let prompt = selection.isEmpty ? "请求：\(question)" : "请求：\(question)\n\n【原文】：\(selection)"
         return try await run(instructions: sys, prompt: prompt)
     }
 }

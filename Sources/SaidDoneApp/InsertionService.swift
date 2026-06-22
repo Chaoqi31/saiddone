@@ -59,7 +59,7 @@ enum InsertionService {
         up?.post(tap: loc)
     }
 
-    /// Copy the current selection (⌘C) and return it — for Rewrite Mode. Requires Accessibility.
+    /// Copy the current selection (⌘C) and return it — for Ask Anything mode. Requires Accessibility.
     static func grabSelection() -> String {
         guard AXIsProcessTrusted() else { return "" }
         let pb = NSPasteboard.general

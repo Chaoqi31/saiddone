@@ -63,7 +63,7 @@ public struct CloudLLMProvider: LLMProvider {
     }
 
     public func polish(_ text: String, context: PolishContext) async throws -> String {
-        return try await chat(system: polishSystemPrompt(context: context), user: text)
+        return try await chat(system: PolishPrompt.system(context: context), user: text)
     }
 
     public func translate(_ text: String, to targetLanguage: String, context: PolishContext) async throws -> String {
@@ -71,9 +71,14 @@ public struct CloudLLMProvider: LLMProvider {
         return try await chat(system: sys, user: text)
     }
 
-    public func rewrite(_ instruction: String, selection: String, context: PolishContext) async throws -> String {
-        let sys = "你是文本改写助手。根据用户的指令改写【原文】；若【原文】为空，则按指令直接生成。中文用简体。只输出结果，不要解释、不要引号。"
-        let user = selection.isEmpty ? "指令：\(instruction)" : "指令：\(instruction)\n\n【原文】：\(selection)"
+    public func ask(_ question: String, selection: String, context: PolishContext) async throws -> String {
+        let sys = """
+        你是智能助手（类似 Typeless「随便问」）。用户用语音提出了请求。
+        - 若有【原文】（选中的文本）：按请求编辑原文，或回答关于原文的问题（摘要、解释、翻译等）。
+        - 若无原文：直接回答用户的问题，或按请求生成内容。
+        中文用简体。只输出最终结果，不要解释、不要引号、不要复述指令。
+        """
+        let user = selection.isEmpty ? "请求：\(question)" : "请求：\(question)\n\n【原文】：\(selection)"
         return try await chat(system: sys, user: user)
     }
 

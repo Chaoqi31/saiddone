@@ -21,6 +21,14 @@ public struct AudioSamples: Sendable {
     /// True when short enough that the B1 (≤2s) latency bar applies (GOALS: short audio ≤15s).
     public var isShortUtterance: Bool { duration <= 15 }
 
+    /// Peak RMS level (0…1) — useful to detect a silent/dead mic capture.
+    public var peakRMS: Float {
+        guard !samples.isEmpty else { return 0 }
+        var sum: Float = 0
+        for s in samples { sum += s * s }
+        return sqrt(sum / Float(samples.count))
+    }
+
     /// Trim leading/trailing silence (with a small pad). Whisper hallucinates subtitle outros
     /// ("谢谢大家"…) on trailing silence, so cutting it removes the root cause + speeds ASR.
     public func trimmedSilence(threshold: Float = 0.012, windowMs: Double = 30, padMs: Double = 120) -> AudioSamples {

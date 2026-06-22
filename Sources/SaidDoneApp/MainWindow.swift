@@ -257,11 +257,11 @@ private struct HomePane: View {
                 }
 
                 card("Quick start", icon: "bolt.fill") {
-                    shortcutRow("Dictation", "speak → press again to stop & insert", "⌃⌥D")
+                    shortcutRow("Voice Input", "press to start and stop voice input", "⌃⌥D")
                     Divider()
-                    shortcutRow("Translation", "speak one language, insert another", "⌃⌥T")
+                    shortcutRow("Translation", "press to start and stop translation", "⌃⌥T")
                     Divider()
-                    shortcutRow("Rewrite", "select text, speak an instruction", "⌃⌥R")
+                    shortcutRow("Ask Anything", "press to start and stop asking", "⌃⌥A")
                     Divider()
                     Label("Text lands at your cursor — click into a field first.", systemImage: "cursorarrow.rays")
                         .font(.callout).foregroundStyle(.secondary)
@@ -302,7 +302,7 @@ private struct HomePane: View {
     }
 
     private var appVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.0.0"
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.1.0"
     }
 
     private func permRow(_ label: LocalizedStringKey, _ pane: String) -> some View {
@@ -479,8 +479,8 @@ private struct HistoryPane: View {
     private func modeBadge(_ mode: String) -> String {
         switch mode {
         case "translation": return NSLocalizedString("Translation", comment: "history mode badge")
-        case "rewrite": return NSLocalizedString("Rewrite", comment: "history mode badge")
-        default: return NSLocalizedString("Dictation", comment: "history mode badge")
+        case "ask", "rewrite": return NSLocalizedString("Ask Anything", comment: "history mode badge")
+        default: return NSLocalizedString("Voice Input", comment: "history mode badge")
         }
     }
 

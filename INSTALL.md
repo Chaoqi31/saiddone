@@ -73,9 +73,9 @@ Click into any text field, then:
 
 | Shortcut | Mode |
 |---|---|
-| `⌃⌥D` | **Dictation** — speak, get clean text at your cursor |
+| `⌃⌥D` | **Voice Input** — speak, get clean text at your cursor |
 | `⌃⌥T` | **Translation** — speak one language, insert another |
-| `⌃⌥R` | **Rewrite** — select text, speak an instruction |
+| `⌃⌥A` | **Ask Anything** — edit/query selected text, or ask a question |
 
 Press once to start, press again to finish & insert. Everything is saved to **History** (searchable, editable, re-insertable).
 
@@ -87,5 +87,6 @@ Press once to start, press again to finish & insert. Everything is saved to **Hi
 - **Model download stuck at 0% / very slow.** Enable the **hf-mirror.com** mirror in the Setup Assistant, or check your network/proxy.
 - **Dictation transcribes but nothing is inserted.** Accessibility permission is off — grant it in **System Settings → Privacy & Security → Accessibility** (your text is still in History).
 - **First polish is slow.** The model loads into memory on first use (one-time, per launch). The Setup Assistant warms it for you.
+- **No audio captured / "未录到声音".** Check **System Settings → Sound → Input** (levels move when you speak). If using Bluetooth headphones, try built-in mic or toggle **Record from built-in mic** in Settings → General.
 
 Requires **Apple Silicon** (M1 or later) and **macOS 14+**. Building from source additionally needs Xcode 26 / Swift 6.2 and the Metal toolchain — see the [README](README.md).

@@ -7,8 +7,10 @@
 "Settings" = "设置";
 
 /* Modes (shortcut titles, history badge, menu) */
+"Voice Input" = "语音输入";
 "Dictation" = "听写";
 "Translation" = "翻译";
+"Ask Anything" = "随便问";
 "Rewrite" = "改写";
 
 /* Home */
@@ -83,7 +85,7 @@
 "Match your main spoken language — auto-detect is unreliable for zh-en code-switching." = "匹配你的主要口语 — 自动检测对中英混说不可靠。";
 "Shortcuts" = "快捷键";
 "Personalization" = "个性化";
-"Tell the AI who you are — it tailors polishing to your role, jargon, and code-switching (like ChatGPT custom instructions)." = "告诉 AI 你是谁 — 它会按你的身份、术语和中英混说来润色（类似 ChatGPT 自定义指令）。";
+"Tell the AI who you are — it tailors polishing, fixes misheard English in zh-en speech using context, and handles your jargon (like ChatGPT custom instructions)." = "告诉 AI 你是谁 — 它会结合上下文纠正中英混说里误听的英文，并适配你的专业术语（类似 ChatGPT 自定义指令）。";
 "Behavior" = "行为";
 "Launch at login" = "登录时启动";
 "Keep result on clipboard after inserting" = "插入后保留到剪贴板";
@@ -109,7 +111,7 @@
 "Whisper large-v3 turbo — faster, lighter" = "Whisper large-v3 turbo — 更快、更轻";
 "Runs fully offline on-device. large-v3 is more accurate but slower and heavier; a newly-picked model downloads on first use (Setup tab)." = "完全在本地离线运行。large-v3 更准确，但更慢、更占资源；新选的模型首次使用时会下载（“设置向导”标签页）。";
 "Uses the OpenAI-compatible endpoint and key from the Cloud tab — audio leaves your device. Good Chinese engines: SiliconFlow SenseVoice or OpenAI gpt-4o-transcribe." = "使用“云端”标签页的 OpenAI 兼容端点与 Key — 音频会离开你的设备。中文推荐：SiliconFlow SenseVoice 或 OpenAI gpt-4o-transcribe。";
-"Language model — polish · translate · rewrite" = "语言模型 — 润色 · 翻译 · 改写";
+"Language model — polish · translate · ask" = "语言模型 — 润色 · 翻译 · 随便问";
 "Local model" = "本地模型";
 "Bigger model → better punctuation & structuring, more RAM. Download in the Setup tab. Fully offline, zero-key." = "模型越大 → 标点与结构越好，占用内存更多。请在“设置向导”下载。完全离线、无需 Key。";
 "Uses the OpenAI-compatible endpoint and key from the Cloud tab — text leaves your device." = "使用“云端”标签页的 OpenAI 兼容端点与 Key — 文本会离开你的设备。";
@@ -122,7 +124,7 @@
 
 /* Settings — Cloud */
 "Keys are saved in config.json and audio/text leaves your device. Pick Cloud for a stage in the Providers tab to use these." = "Key 保存在 config.json 中，音频/文本会离开你的设备。在“引擎”标签页将某一阶段设为“云端”即可启用。";
-"LLM — polish / translate / rewrite" = "大模型 — 润色 / 翻译 / 改写";
+"LLM — polish / translate / ask" = "大模型 — 润色 / 翻译 / 随便问";
 "API key" = "API Key";
 "Base URL" = "Base URL";
 "ASR — speech (OpenAI-compatible)" = "ASR — 语音（OpenAI 兼容）";
@@ -166,11 +168,13 @@
 "Processing…" = "处理中…";
 "Transcribing…" = "转写中…";
 "Polishing…" = "润色中…";
+"Rewriting…" = "改写中…";
 "Inserting…" = "插入中…";
 "Loading model…" = "正在加载模型…";
 "Recording" = "录音中";
 "Translating" = "翻译中";
-"Rewrite — speak instruction" = "改写 — 说出指令";
+"Thinking…" = "思考中…";
+"Ask — speak your question" = "随便问 — 说出问题或指令";
 "Inserted" = "已插入";
 "Inserted · on clipboard" = "已插入 · 已复制到剪贴板";
 
@@ -182,7 +186,7 @@
 "Mouse btn 4 (side)" = "鼠标侧键 4";
 "Mouse btn 5 (side)" = "鼠标侧键 5";
 "Mouse btn %d" = "鼠标键 %d";
-"Three modes need separate shortcuts: dictation types new text; rewrite needs selected text plus a spoken instruction. Keyboard shortcuts need a modifier (⌃⌥ etc.). Mouse side buttons work too — grant Accessibility so SaidDone can listen globally." = "三种模式需要不同快捷键：听写直接输入；改写需先选中文字再说指令。键盘快捷键需配合修饰键（⌃⌥ 等）。鼠标侧键也可用——请在系统设置中授予 SaidDone「辅助功能」权限。";
+"Press to start and stop each mode — like Typeless: voice input types at your cursor; translation outputs in your target language; ask anything edits selected text or answers your question." = "按下开始和停止各模式——与 Typeless 相同：语音输入在光标处打字；翻译输出为目标语言；随便问可编辑选中文字或回答你的问题。";
 "Insert draft immediately, then polish in place" = "先插入转写稿，润色后替换";
 "unpolished" = "未润色";
 
@@ -192,9 +196,9 @@
 "Stop & Insert — %@" = "停止并插入 — %@";
 "Cancel (discard)" = "取消（放弃）";
 "Working…" = "处理中…";
-"Start Dictation        ⌃⌥D" = "开始听写        ⌃⌥D";
+"Start Voice Input       ⌃⌥D" = "开始语音输入       ⌃⌥D";
 "Start Translation     ⌃⌥T" = "开始翻译     ⌃⌥T";
-"Start Rewrite          ⌃⌥R" = "开始改写          ⌃⌥R";
+"Start Ask Anything    ⌃⌥A" = "开始随便问    ⌃⌥A";
 "Open SaidDone…" = "打开 SaidDone…";
 "Quit SaidDone" = "退出 SaidDone";
 
@@ -267,6 +271,9 @@
 /* Errors (overlay) */
 "Loading model…" = "正在加载模型…";
 "No speech detected — try again." = "未检测到语音 — 请重试。";
+"No audio captured — check microphone permission and input device." = "未录到声音 — 请检查麦克风权限和输入设备。";
+"Couldn't transcribe speech — try speaking louder or check your mic." = "无法识别语音 — 请大声一点或检查麦克风。";
+"Inserted (unpolished draft)" = "已插入（未润色草稿）";
 "Speech model not downloaded — open Settings → Setup." = "语音模型未下载 — 请打开 设置 → 设置向导。";
 "AI model not downloaded — open Settings → Setup." = "AI 模型未下载 — 请打开 设置 → 设置向导。";
 "Network unavailable. Check your connection and try again." = "网络不可用，请检查连接后重试。";

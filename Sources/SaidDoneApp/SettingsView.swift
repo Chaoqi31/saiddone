@@ -103,13 +103,13 @@ struct SettingsView: View {
             }
 
             Section {
-                HotkeyRecorder(label: "Dictation", hotkey: $model.config.dictationHotkey)
+                HotkeyRecorder(label: "Voice Input", hotkey: $model.config.dictationHotkey)
                 HotkeyRecorder(label: "Translation", hotkey: $model.config.translationHotkey)
-                HotkeyRecorder(label: "Rewrite", hotkey: $model.config.rewriteHotkey)
+                HotkeyRecorder(label: "Ask Anything", hotkey: $model.config.askHotkey)
             } header: {
                 Text("Shortcuts")
             } footer: {
-                Text("Three modes need separate shortcuts: dictation types new text; rewrite needs selected text plus a spoken instruction. Keyboard shortcuts need a modifier (⌃⌥ etc.). Mouse side buttons work too — grant Accessibility so SaidDone can listen globally.")
+                Text("Press to start and stop each mode — like Typeless: voice input types at your cursor; translation outputs in your target language; ask anything edits selected text or answers your question.")
             }
 
             Section {
@@ -119,7 +119,7 @@ struct SettingsView: View {
             } header: {
                 Text("Personalization")
             } footer: {
-                Text("Tell the AI who you are — it tailors polishing to your role, jargon, and code-switching (like ChatGPT custom instructions).")
+                Text("Tell the AI who you are — it tailors polishing, fixes misheard English in zh-en speech using context, and handles your jargon (like ChatGPT custom instructions).")
             }
 
             Section("Behavior") {
@@ -208,7 +208,7 @@ struct SettingsView: View {
                     LabeledContent("Model", value: cloudOrDash(model.config.cloud.llmModel))
                 }
             } header: {
-                Text("Language model — polish · translate · rewrite")
+                Text("Language model — polish · translate · ask")
             } footer: {
                 Text(model.config.llm.location == .local
                      ? "Bigger model → better punctuation & structuring, more RAM. Download in the Setup tab. Fully offline, zero-key."
@@ -270,7 +270,7 @@ struct SettingsView: View {
                 TextField("Base URL", text: $model.config.cloud.llmBaseURL)
                 TextField("Model", text: $model.config.cloud.llmModel)
             } header: {
-                Text("LLM — polish / translate / rewrite")
+                Text("LLM — polish / translate / ask")
             } footer: {
                 Text("Examples: deepseek-v4-flash or deepseek-chat @ https://api.deepseek.com · gpt-4o-mini @ OpenAI.")
             }

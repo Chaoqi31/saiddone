@@ -96,7 +96,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         m.launchAtLogin = config.launchAtLogin
         m.dictationHotkey = config.dictationHotkey
         m.translationHotkey = config.translationHotkey
-        m.rewriteHotkey = config.rewriteHotkey
+        m.askHotkey = config.askHotkey
         m.appLanguage = localization.code
         m.onSetLanguage = { [weak self] code in self?.localization.set(code) }
         m.requestMic = { await Permissions.requestMicrophone() }
@@ -243,7 +243,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         c.appLanguage = onboardingModel.appLanguage
         c.dictationHotkey = onboardingModel.dictationHotkey
         c.translationHotkey = onboardingModel.translationHotkey
-        c.rewriteHotkey = onboardingModel.rewriteHotkey
+        c.askHotkey = onboardingModel.askHotkey
         if complete {
             c.launchAtLogin = onboardingModel.launchAtLogin
             c.onboardingCompleted = true
@@ -364,8 +364,8 @@ final class AppController: NSObject, NSApplicationDelegate {
             let label: String = {
                 switch mode {
                 case .translation: return NSLocalizedString("Translation", comment: "mode name")
-                case .rewrite: return NSLocalizedString("Rewrite", comment: "mode name")
-                default: return NSLocalizedString("Dictation", comment: "mode name")
+                case .ask: return NSLocalizedString("Ask Anything", comment: "mode name")
+                default: return NSLocalizedString("Voice Input", comment: "mode name")
                 }
             }()
             menu.addItem(menuItem(String(format: NSLocalizedString("Stop & Insert — %@", comment: "menu"), label), #selector(stopAndInsert), symbol: "stop.circle.fill"))
@@ -374,9 +374,9 @@ final class AppController: NSObject, NSApplicationDelegate {
             let working = menuItem(NSLocalizedString("Working…", comment: "menu"), nil, symbol: "hourglass"); working.isEnabled = false
             menu.addItem(working)
         } else {
-            menu.addItem(menuItem(NSLocalizedString("Start Dictation        ⌃⌥D", comment: "menu"), #selector(toggleDictation), symbol: "mic"))
+            menu.addItem(menuItem(NSLocalizedString("Start Voice Input       ⌃⌥D", comment: "menu"), #selector(toggleDictation), symbol: "mic"))
             menu.addItem(menuItem(NSLocalizedString("Start Translation     ⌃⌥T", comment: "menu"), #selector(toggleTranslation), symbol: "globe"))
-            menu.addItem(menuItem(NSLocalizedString("Start Rewrite          ⌃⌥R", comment: "menu"), #selector(toggleRewrite), symbol: "wand.and.stars"))
+            menu.addItem(menuItem(NSLocalizedString("Start Ask Anything    ⌃⌥A", comment: "menu"), #selector(toggleAsk), symbol: "text.bubble"))
         }
         menu.addItem(.separator())
         menu.addItem(menuItem(NSLocalizedString("Open SaidDone…", comment: "menu"), #selector(openMainWindow), symbol: "macwindow"))
@@ -449,13 +449,13 @@ final class AppController: NSObject, NSApplicationDelegate {
         var failed: [String] = []
         let duplicates = Self.duplicateHotkeyNames(config)
         if hotkeys.register(config.dictationHotkey, onPress: { [weak self] in self?.toggle(.dictation) }) { n += 1 }
-        else { failed.append(NSLocalizedString("Dictation", comment: "hotkey label")) }
+        else { failed.append(NSLocalizedString("Voice Input", comment: "hotkey label")) }
         if hotkeys.register(config.translationHotkey, onPress: { [weak self] in
             self?.toggle(.translation(target: self?.config.targetLanguage ?? "en"))
         }) { n += 1 }
         else { failed.append(NSLocalizedString("Translation", comment: "hotkey label")) }
-        if hotkeys.register(config.rewriteHotkey, onPress: { [weak self] in self?.toggle(.rewrite) }) { n += 1 }
-        else { failed.append(NSLocalizedString("Rewrite", comment: "hotkey label")) }
+        if hotkeys.register(config.askHotkey, onPress: { [weak self] in self?.toggle(.ask) }) { n += 1 }
+        else { failed.append(NSLocalizedString("Ask Anything", comment: "hotkey label")) }
         let names = duplicates.isEmpty ? failed : duplicates
         hotkeyWarning = names.isEmpty
             ? nil
@@ -466,23 +466,16 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     static func duplicateHotkeyNames(_ config: AppConfig) -> [String] {
         let keys: [(String, Hotkey)] = [
-            ("Dictation", config.dictationHotkey),
+            ("Voice Input", config.dictationHotkey),
             ("Translation", config.translationHotkey),
-            ("Rewrite", config.rewriteHotkey),
+            ("Ask Anything", config.askHotkey),
         ]
-        var seen: [Hotkey] = []
-        var duplicates: [String] = []
-        for (name, hotkey) in keys {
-            if seen.contains(hotkey) {
-                duplicates.append(name)
-            } else {
-                seen.append(hotkey)
-            }
-        }
-        return duplicates
+        var byHotkey: [Hotkey: [String]] = [:]
+        for (name, hotkey) in keys { byHotkey[hotkey, default: []].append(name) }
+        return byHotkey.values.filter { $0.count > 1 }.flatMap { $0 }
     }
 
-    @objc private func toggleRewrite() { toggle(.rewrite) }
+    @objc private func toggleAsk() { toggle(.ask) }
 
     @objc private func toggleDictation() { toggle(.dictation) }
     @objc private func toggleTranslation() { toggle(.translation(target: config.targetLanguage)) }
@@ -540,7 +533,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             let label: String = {
                 switch mode {
                 case .translation: return NSLocalizedString("Translating", comment: "overlay label")
-                case .rewrite: return NSLocalizedString("Rewrite — speak instruction", comment: "overlay label")
+                case .ask: return NSLocalizedString("Ask — speak your question", comment: "overlay label")
                 default: return NSLocalizedString("Recording", comment: "overlay label")
                 }
             }()
@@ -606,13 +599,22 @@ final class AppController: NSObject, NSApplicationDelegate {
         overlay.showProcessing()
         activeMode = nil
         isWorking = true
-        slog("recording stopped, \(String(format: "%.1f", audio.duration))s audio, running pipeline…")
+        slog("recording stopped, \(String(format: "%.1f", audio.duration))s audio, peakRMS=\(String(format: "%.4f", audio.peakRMS)), running pipeline…")
         refreshUI()
+
+        if audio.duration < 0.15 || audio.peakRMS < 0.0008 {
+            isWorking = false
+            refreshUI()
+            slog("capture empty or silent — mic may be disconnected or permission denied")
+            overlay.showError(NSLocalizedString("No audio captured — check microphone permission and input device.", comment: "empty capture"))
+            return
+        }
 
         // Resolve App Profile tone from the foreground app (where text will land).
         let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         var context = config.appProfiles.context(bundleID: bundleID, url: nil)
         context.userProfile = config.userProfile.isEmpty ? nil : config.userProfile
+        context.spokenLanguage = config.asrLanguage
 
         // No budget while models are still cold-loading — a first-launch load isn't a hung polish.
         let orch = PipelineOrchestrator(
@@ -630,13 +632,10 @@ final class AppController: NSObject, NSApplicationDelegate {
                              context: PolishContext) async {
         defer { isWorking = false; refreshUI() }
         do {
-            let result: PipelineResult
+            var result: PipelineResult
             let fastBox = FastInsertBox()
-            if case .rewrite = mode {
-                let instruction = try await asr.transcribe(audio.trimmedSilence(), languageHint: config.asrLanguage)
-                let selection = InsertionService.grabSelection()
-                let out = try await llm.rewrite(instruction, selection: selection, context: context)
-                result = PipelineResult(text: out, rawTranscript: "[rewrite] " + instruction, elapsed: 0)
+            if case .ask = mode {
+                result = try await runAskPipeline(audio: audio, context: context)
             } else {
                 let useFast = config.fastInsertBeforePolish
                     && { if case .dictation = mode { return true }; return false }()
@@ -656,13 +655,24 @@ final class AppController: NSObject, NSApplicationDelegate {
             }
             slog("pipeline done, rawLen=\(result.rawTranscript.count), textLen=\(result.text.count), elapsed=\(String(format: "%.2f", result.elapsed))s polishSkipped=\(result.polishSkipped)")
             let finalText = config.voiceCommandsEnabled ? VoiceCommands.apply(result.text) : result.text
-            guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                slog("pipeline produced empty text — skipping insert")
-                overlay.showError(NSLocalizedString("No speech detected — try again.", comment: "empty result"))
+            let trimmedFinal = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedFinal.isEmpty else {
+                // Fast-insert draft survived even if polish/ASR path emptied — don't lose the user's words.
+                if let draft = fastBox.text?.trimmingCharacters(in: .whitespacesAndNewlines), !draft.isEmpty {
+                    slog("pipeline empty but draft retained (\(draft.count) chars)")
+                    if config.soundsEnabled { SoundFx.done() }
+                    overlay.showDone(NSLocalizedString("Inserted (unpolished draft)", comment: "dictation draft fallback"))
+                    return
+                }
+                slog("pipeline produced empty text — rawLen=\(result.rawTranscript.count), audio=\(String(format: "%.1f", audio.duration))s")
+                let msg = result.rawTranscript.isEmpty
+                    ? NSLocalizedString("Couldn't transcribe speech — try speaking louder or check your mic.", comment: "asr empty")
+                    : NSLocalizedString("No speech detected — try again.", comment: "empty result")
+                overlay.showError(msg)
                 return
             }
             let modeStr: String = {
-                switch mode { case .translation: return "translation"; case .rewrite: return "rewrite"; default: return "dictation" }
+                switch mode { case .translation: return "translation"; case .ask: return "ask"; default: return "dictation" }
             }()
             let id = UUID()
             var audioFile: String? = nil
@@ -692,6 +702,15 @@ final class AppController: NSObject, NSApplicationDelegate {
             NSSound.beep()
             overlay.showError(Self.friendlyError(error))
         }
+    }
+
+    private func runAskPipeline(audio: AudioSamples, context: PolishContext) async throws -> PipelineResult {
+        overlay.updateProcessing(progress: 0.5, stageKey: "asking")
+        let question = try await asr.transcribe(audio.trimmedSilence(), languageHint: config.asrLanguage)
+        let selection = InsertionService.grabSelection()
+        let out = try await llm.ask(question, selection: selection, context: context)
+        overlay.updateProcessing(progress: 1.0, stageKey: "done")
+        return PipelineResult(text: out, rawTranscript: "[ask] " + question, elapsed: 0)
     }
 }
 

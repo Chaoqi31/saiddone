@@ -4,7 +4,7 @@ import Foundation
 public enum Mode: Sendable, Equatable {
     case dictation
     case translation(target: String)
-    case rewrite   // speech is an instruction to rewrite the selected text
+    case ask       // Ask Anything — edit/query selection or answer a spoken question
 }
 
 /// Result of running the pipeline, with timing so callers can check the B1 (≤2s) latency bar.
@@ -76,8 +76,8 @@ public struct PipelineOrchestrator: Sendable {
                 throw ProviderError.latencyBudgetExceeded
             }
             final = translated
-        case .rewrite:
-            final = try await polishWithBudget(corrected, context: context)
+        case .ask:
+            final = corrected
         }
         onProgress?(1.0, "done")
         let elapsed = start.duration(to: clock.now).asSeconds

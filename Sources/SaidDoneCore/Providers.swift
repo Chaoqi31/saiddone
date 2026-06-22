@@ -23,9 +23,12 @@ public protocol ASRProvider: Sendable {
 public struct PolishContext: Sendable {
     public var tonePrompt: String?
     public var userProfile: String?
-    public init(tonePrompt: String? = nil, userProfile: String? = nil) {
+    /// Primary spoken language (e.g. "zh") — helps polish fix code-switch ASR errors.
+    public var spokenLanguage: String?
+    public init(tonePrompt: String? = nil, userProfile: String? = nil, spokenLanguage: String? = nil) {
         self.tonePrompt = tonePrompt
         self.userProfile = userProfile
+        self.spokenLanguage = spokenLanguage
     }
     public static let none = PolishContext()
 }
@@ -38,13 +41,13 @@ public protocol LLMProvider: Sendable {
     func polish(_ text: String, context: PolishContext) async throws -> String
     /// Translate into `targetLanguage` (e.g. "en", "zh"). Used by Translation Mode (GOALS A4).
     func translate(_ text: String, to targetLanguage: String, context: PolishContext) async throws -> String
-    /// Rewrite `selection` per a spoken `instruction` (Rewrite Mode). Empty selection = generate from the instruction.
-    func rewrite(_ instruction: String, selection: String, context: PolishContext) async throws -> String
+    /// Ask Anything: edit/query `selection` per a spoken request, or answer when selection is empty.
+    func ask(_ question: String, selection: String, context: PolishContext) async throws -> String
 }
 
 public extension LLMProvider {
-    func rewrite(_ instruction: String, selection: String, context: PolishContext) async throws -> String {
-        throw ProviderError.notConfigured("rewrite needs an MLX or Cloud LLM")
+    func ask(_ question: String, selection: String, context: PolishContext) async throws -> String {
+        throw ProviderError.notConfigured("Ask Anything needs an MLX or Cloud LLM")
     }
 }
 

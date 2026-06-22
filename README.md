@@ -12,7 +12,7 @@ Press a hotkey, speak, and polished text lands at your cursor — in any app.
 ![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
 ![Swift](https://img.shields.io/badge/Swift-6.2-f05138?logo=swift&logoColor=white)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-required-555)
-![Tests](https://img.shields.io/badge/tests-50%2B%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-53%2B%20passing-brightgreen)
 
 </div>
 
@@ -25,26 +25,26 @@ Press a hotkey, speak, and polished text lands at your cursor — in any app.
 
 | | |
 |---|---|
-| **Dictation** `⌃⌥D` | Speak in any app; get clean text at your cursor. |
+| **Voice Input** `⌃⌥D` | Speak in any app; get clean text at your cursor. |
 | **Translation** `⌃⌥T` | Speak one language; insert another. |
-| **Rewrite** `⌃⌥R` | Select text, speak an instruction ("make it formal", "as bullet points") — it's rewritten in place. |
+| **Ask Anything** `⌃⌥A` | Select text and speak an instruction, or ask a question — like Typeless. |
 | **Private by default** | On-device WhisperKit ASR, works offline. Cloud is opt-in and per-stage. |
-| **Faithful polishing** | Punctuation, Simplified Chinese, filler removal, zh-en code-switching, subtitle-hallucination filtering, silence trimming — cleans up what you said without rewriting or inventing. |
+| **Faithful polishing** | Punctuation, Simplified Chinese, filler removal, **context-aware zh-en ASR fixes**, subtitle-hallucination filtering, silence trimming — cleans up what you said without rewriting or inventing. |
 | **Custom dictionary** | Fix a word once in History; it's corrected automatically next time. |
 | **Personalization** | User profile + per-app tone profiles (like ChatGPT custom instructions). |
 | **History** | Search, edit, re-insert, export — with original audio saved on device. |
 | **Polished UX** | Setup Assistant, bilingual UI (中文 / English), menu-bar + Dock, rebindable hotkeys (keyboard **or mouse side buttons**), recording overlay with 0→1 progress, launch-at-login, VoiceOver support. |
 | **Fast dictation** | Optional: insert the ASR draft immediately, then swap in the polished text when ready. |
 
-**v1.0 highlights:** Keychain for API keys · `.env` in Application Support · cloud timeout scales with speech length · history shows timing and unpolished entries.
+**v1.1 highlights:** Typeless-style three modes · smarter zh-en polish · reliable mic on route changes · polish never drops your words.
 
 ## Shortcuts
 
 | Shortcut | Mode | Behavior |
 |---|---|---|
-| `⌃⌥D` | Dictation | Press to start, press again to finish and insert. No silence auto-stop. |
+| `⌃⌥D` | Voice Input | Press to start, press again to finish and insert. |
 | `⌃⌥T` | Translation | Speak in any language → inserts the configured target language. |
-| `⌃⌥R` | Rewrite | Speak an instruction to rewrite the currently selected text. |
+| `⌃⌥A` | Ask Anything | Edit/query selected text, or ask a question with no selection. |
 
 All shortcuts are rebindable in **Settings → General**.
 
@@ -66,7 +66,7 @@ See **[INSTALL.md](INSTALL.md)** for the full walkthrough.
 
 ```sh
 git clone https://github.com/Chaoqi31/saiddone && cd saiddone
-swift build && swift test     # build + run 49 unit tests
+swift build && swift test     # build + run 53 unit tests
 ./scripts/install.sh          # build the app and install to /Applications
 ```
 
@@ -110,9 +110,9 @@ Add an OpenAI-compatible key in **Settings → Cloud** (stored in Keychain), the
 
 ```
 hotkey (toggle) → capture audio → trim silence → ASR → custom dictionary
-   → polish  ┃ Dictation
+   → polish  ┃ Voice Input
    → translate ┃ Translation        → insert at cursor (⌘V paste) → save to History
-   → rewrite  ┃ Rewrite (selection)
+   → ask       ┃ Ask Anything
 ```
 
 If the LLM polish step exceeds your **AI step timeout** (Settings → General, default 8 s), SaidDone inserts the dictionary-corrected transcript instead of waiting — your words are never lost. Translation mode reports a timeout rather than inserting stale text.

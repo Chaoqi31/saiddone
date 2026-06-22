@@ -120,6 +120,8 @@ final class RecordingOverlay {
             return NSLocalizedString("Transcribing…", comment: "overlay stage")
         case "polishing":
             return NSLocalizedString("Polishing…", comment: "overlay stage")
+        case "rewriting", "asking":
+            return NSLocalizedString("Thinking…", comment: "overlay stage")
         case "done":
             return NSLocalizedString("Inserting…", comment: "overlay stage")
         default:

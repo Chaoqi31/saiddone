@@ -31,7 +31,7 @@ final class OnboardingModel: ObservableObject {
     // Shortcuts (rebindable on the final step).
     @Published var dictationHotkey = AppConfig.default.dictationHotkey
     @Published var translationHotkey = AppConfig.default.translationHotkey
-    @Published var rewriteHotkey = AppConfig.default.rewriteHotkey
+    @Published var askHotkey = AppConfig.default.askHotkey
 
     // Provisioning
     @Published var asrReady = false
@@ -562,9 +562,9 @@ private struct DoneStep: View {
             Text("You're all set").font(.largeTitle.bold())
             VStack(alignment: .leading, spacing: 8) {
                 Text("Shortcuts — click a shortcut to change it").font(.caption).foregroundStyle(.secondary)
-                HotkeyRecorder(label: "Dictation", hotkey: $model.dictationHotkey)
+                HotkeyRecorder(label: "Voice Input", hotkey: $model.dictationHotkey)
                 HotkeyRecorder(label: "Translation", hotkey: $model.translationHotkey)
-                HotkeyRecorder(label: "Rewrite selected text", hotkey: $model.rewriteHotkey)
+                HotkeyRecorder(label: "Ask Anything", hotkey: $model.askHotkey)
             }
             .padding(12).background(.quaternary.opacity(0.4)).clipShape(RoundedRectangle(cornerRadius: 10))
             Text("Click into any text field first, then hold the hotkey and speak. Release to insert.")

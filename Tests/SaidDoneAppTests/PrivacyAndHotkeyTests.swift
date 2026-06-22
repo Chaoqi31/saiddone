@@ -32,7 +32,7 @@ final class PrivacyAndHotkeyTests: XCTestCase {
         var config = AppConfig.default
         config.translationHotkey = config.dictationHotkey
 
-        XCTAssertEqual(AppController.duplicateHotkeyNames(config), ["Translation"])
+        XCTAssertEqual(Set(AppController.duplicateHotkeyNames(config)), ["Voice Input", "Translation"])
     }
 
     func testMouseHotkeyDisplayAndDuplicates() {
@@ -40,8 +40,8 @@ final class PrivacyAndHotkeyTests: XCTestCase {
         XCTAssertTrue(hotkeyDisplay(side).contains("4") || hotkeyDisplay(side).contains("侧"))
 
         var config = AppConfig.default
-        config.rewriteHotkey = Hotkey(mouseButton: 3)
+        config.askHotkey = Hotkey(mouseButton: 3)
         config.dictationHotkey = Hotkey(mouseButton: 3)
-        XCTAssertEqual(AppController.duplicateHotkeyNames(config), ["Rewrite"])
+        XCTAssertEqual(Set(AppController.duplicateHotkeyNames(config)), ["Ask Anything", "Voice Input"])
     }
 }
