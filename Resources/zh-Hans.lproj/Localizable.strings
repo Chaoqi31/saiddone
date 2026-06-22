@@ -164,6 +164,10 @@
 
 /* Recording overlay */
 "Processing…" = "处理中…";
+"Transcribing…" = "转写中…";
+"Polishing…" = "润色中…";
+"Inserting…" = "插入中…";
+"Loading model…" = "正在加载模型…";
 "Recording" = "录音中";
 "Translating" = "翻译中";
 "Rewrite — speak instruction" = "改写 — 说出指令";

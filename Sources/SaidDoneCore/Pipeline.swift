@@ -29,13 +29,17 @@ public struct PipelineOrchestrator: Sendable {
     /// On timeout, Polish degrades to the dictionary-corrected transcript (never lose the user's
     /// words); Translate throws `latencyBudgetExceeded` (a stale source-language insert is worse).
     public var llmTimeout: TimeInterval?
+    /// Optional 0…1 progress + stage label (e.g. for the recording overlay).
+    public var onProgress: (@Sendable (Double, String) -> Void)?
 
     public init(asr: ASRProvider, llm: LLMProvider, dictionary: CustomDictionary = .init(),
-                llmTimeout: TimeInterval? = nil) {
+                llmTimeout: TimeInterval? = nil,
+                onProgress: (@Sendable (Double, String) -> Void)? = nil) {
         self.asr = asr
         self.llm = llm
         self.dictionary = dictionary
         self.llmTimeout = llmTimeout
+        self.onProgress = onProgress
     }
 
     /// Run audio through the full pipeline for `mode`. `context` is the resolved App Profile tone.
@@ -43,8 +47,10 @@ public struct PipelineOrchestrator: Sendable {
                     languageHint: String? = nil) async throws -> PipelineResult {
         let clock = ContinuousClock()
         let start = clock.now
+        onProgress?(0.05, "transcribing")
 
         let raw = try await asr.transcribe(audio.trimmedSilence(), languageHint: languageHint)
+        onProgress?(0.45, "polishing")
         let cleaned = ASRCleanup.strip(raw)          // drop hallucinations (谢谢大家 …)
         let corrected = dictionary.apply(to: cleaned) // user term corrections
 
@@ -70,13 +76,16 @@ public struct PipelineOrchestrator: Sendable {
             final = try await polishWithBudget(corrected, context: context)
         }
 
+        onProgress?(1.0, "done")
         let elapsed = start.duration(to: clock.now).asSeconds
         return PipelineResult(text: final, rawTranscript: raw, elapsed: elapsed)
     }
 
     /// Polish under the latency budget: timeout → the input text as-is (degrade, don't error).
     private func polishWithBudget(_ text: String, context: PolishContext) async throws -> String {
-        try await withBudget { try await llm.polish(text, context: context) } ?? text
+        let polished = try await withBudget { try await llm.polish(text, context: context) } ?? text
+        // Empty cloud response → keep the dictionary-corrected transcript.
+        return polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : polished
     }
 
     /// Run `op` racing the budget. Returns nil on timeout; no budget = just run `op`.

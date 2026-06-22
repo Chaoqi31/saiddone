@@ -9,6 +9,8 @@ final class OverlayModel: ObservableObject {
     @Published var seconds: Int = 0
     @Published var label: String = "Recording"
     @Published var processing = false
+    @Published var processingProgress: Double = 0   // 0…1 deterministic pipeline progress
+    @Published var processingStage = ""
     @Published var slowHint = false          // shown when processing drags (first-run model load)
     @Published var errorText: String?
     @Published var doneText: String?
@@ -17,7 +19,11 @@ final class OverlayModel: ObservableObject {
     var onCancel: (() -> Void)?
 
     func pushLevel(_ v: Float) { level = v; levels.removeFirst(); levels.append(v) }
-    func reset() { level = 0; seconds = 0; processing = false; slowHint = false; errorText = nil; doneText = nil; previewText = ""; levels = Array(repeating: 0, count: 30) }
+    func reset() {
+        level = 0; seconds = 0; processing = false; processingProgress = 0; processingStage = ""
+        slowHint = false; errorText = nil; doneText = nil; previewText = ""
+        levels = Array(repeating: 0, count: 30)
+    }
 }
 
 /// Floating, click-through-except-buttons overlay: dot + waveform + timer + ✓/✕ while recording,
@@ -52,6 +58,8 @@ final class RecordingOverlay {
     func showProcessing() {
         timer?.invalidate()
         model.processing = true
+        model.processingProgress = 0
+        model.processingStage = NSLocalizedString("Processing…", comment: "overlay processing")
         model.slowHint = false
         // If the pipeline runs long (a cold first-run model load), say so instead of a silent spinner.
         timer = Timer.scheduledTimer(withTimeInterval: 6.0, repeats: false) { [weak self] _ in
@@ -99,6 +107,25 @@ final class RecordingOverlay {
     }
 
     func updateLevel(_ level: Float) { model.pushLevel(level) }
+
+    /// Update the deterministic 0…1 pipeline progress bar.
+    func updateProcessing(progress: Double, stageKey: String) {
+        model.processingProgress = min(1, max(0, progress))
+        model.processingStage = localizedStage(stageKey)
+    }
+
+    private func localizedStage(_ key: String) -> String {
+        switch key {
+        case "transcribing":
+            return NSLocalizedString("Transcribing…", comment: "overlay stage")
+        case "polishing":
+            return NSLocalizedString("Polishing…", comment: "overlay stage")
+        case "done":
+            return NSLocalizedString("Inserting…", comment: "overlay stage")
+        default:
+            return NSLocalizedString("Processing…", comment: "overlay processing")
+        }
+    }
 
     func updatePreview(_ text: String) {
         model.previewText = text
@@ -165,9 +192,14 @@ private struct OverlayView: View {
                 HStack(spacing: 10) {
                     Image(systemName: "waveform").foregroundStyle(.purple)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(model.slowHint ? "Loading model…" : "Processing…")
+                        Text(model.slowHint
+                             ? NSLocalizedString("Loading model…", comment: "overlay slow")
+                             : model.processingStage)
                             .font(.system(size: 12, weight: .medium)).lineLimit(1)
-                        ProgressView().progressViewStyle(.linear).frame(width: 200)
+                        ProgressView(value: model.processingProgress)
+                            .progressViewStyle(.linear)
+                            .frame(width: 200)
+                            .animation(.easeOut(duration: 0.25), value: model.processingProgress)
                     }
                     Spacer(minLength: 0)
                 }

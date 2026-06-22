@@ -133,7 +133,7 @@ struct SettingsView: View {
                             .monospacedDigit().frame(minWidth: 32, alignment: .trailing)
                     }
                 }
-                .help("If polishing takes longer than this, insert the raw transcript instead of waiting. 0 = wait forever.")
+                .help("If polishing takes longer than this, insert the raw transcript instead of waiting. 0 = wait forever. Cloud mode auto-extends the budget for longer speech.")
             }
 
             Section {

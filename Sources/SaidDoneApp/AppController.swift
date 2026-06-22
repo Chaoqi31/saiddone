@@ -586,6 +586,16 @@ final class AppController: NSObject, NSApplicationDelegate {
         return NSLocalizedString("Transcription failed. Please try again.", comment: "error")
     }
 
+    /// LLM latency budget: cloud polish on long utterances needs more headroom than local MLX.
+    private func llmTimeoutBudget(for audio: AudioSamples) -> TimeInterval? {
+        guard config.llmTimeoutSeconds > 0 else { return nil }
+        var budget = config.llmTimeoutSeconds
+        if llm.location == .cloud {
+            budget = max(budget, 6 + audio.duration * 0.3)
+        }
+        return budget
+    }
+
     private func finishRecording() {
         guard let mode = activeMode else { return }
         let audio = capture.stop()
@@ -604,8 +614,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         context.userProfile = config.userProfile.isEmpty ? nil : config.userProfile
 
         // No budget while models are still cold-loading — a first-launch load isn't a hung polish.
-        let orch = PipelineOrchestrator(asr: asr, llm: llm, dictionary: config.dictionary,
-                                        llmTimeout: isPrewarming ? 0 : config.llmTimeoutSeconds)
+        let orch = PipelineOrchestrator(
+            asr: asr, llm: llm, dictionary: config.dictionary,
+            llmTimeout: isPrewarming ? nil : llmTimeoutBudget(for: audio),
+            onProgress: { [weak self] progress, stage in
+                Task { @MainActor in self?.overlay.updateProcessing(progress: progress, stageKey: stage) }
+            })
         Task { @MainActor in
             defer { self.isWorking = false; self.refreshUI() }
             do {

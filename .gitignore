@@ -6,6 +6,7 @@ DerivedData/
 .DS_Store
 dist/
 *.app
+.cache/
 
 # internal scratch/comparison docs (not product docs)
 FEATURES.md
