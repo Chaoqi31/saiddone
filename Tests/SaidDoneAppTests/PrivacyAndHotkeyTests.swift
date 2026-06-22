@@ -34,4 +34,14 @@ final class PrivacyAndHotkeyTests: XCTestCase {
 
         XCTAssertEqual(AppController.duplicateHotkeyNames(config), ["Translation"])
     }
+
+    func testMouseHotkeyDisplayAndDuplicates() {
+        let side = Hotkey(mouseButton: 3)
+        XCTAssertTrue(hotkeyDisplay(side).contains("4") || hotkeyDisplay(side).contains("侧"))
+
+        var config = AppConfig.default
+        config.rewriteHotkey = Hotkey(mouseButton: 3)
+        config.dictationHotkey = Hotkey(mouseButton: 3)
+        XCTAssertEqual(AppController.duplicateHotkeyNames(config), ["Rewrite"])
+    }
 }

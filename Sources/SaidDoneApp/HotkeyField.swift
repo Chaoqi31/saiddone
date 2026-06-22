@@ -2,19 +2,22 @@ import SwiftUI
 import AppKit
 import SaidDoneCore
 
-/// Click to record a new global shortcut (captures the next key-with-modifier).
+/// Click to record a new global shortcut (keyboard with modifier, or a mouse button).
 struct HotkeyRecorder: View {
     let label: LocalizedStringKey
     @Binding var hotkey: Hotkey
     @State private var recording = false
-    @State private var monitor: Any?
+    @State private var localMonitor: Any?
+    @State private var globalMonitor: Any?
 
     var body: some View {
         HStack {
             Text(label)
             Spacer()
-            Button(recording ? NSLocalizedString("Press shortcut…", comment: "hotkey recorder") : hotkeyDisplay(hotkey)) { toggle() }
-                .frame(minWidth: 120)
+            Button(recording
+                   ? NSLocalizedString("Press shortcut…", comment: "hotkey recorder")
+                   : hotkeyDisplay(hotkey)) { toggle() }
+                .frame(minWidth: 140)
         }
         .onDisappear { stop() }
     }
@@ -22,25 +25,41 @@ struct HotkeyRecorder: View {
     private func toggle() {
         if recording { stop(); return }
         recording = true
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            let mods = event.modifierFlags.intersection([.command, .option, .control, .shift]).rawValue
-            if mods != 0 {  // require at least one modifier to avoid trapping plain keys
-                hotkey = Hotkey(keyCode: UInt32(event.keyCode), modifiers: mods)
+        let capture: (NSEvent) -> Void = { event in
+            switch event.type {
+            case .otherMouseDown, .rightMouseDown:
+                hotkey = Hotkey(mouseButton: Int(event.buttonNumber))
                 stop()
-                return nil
+            case .keyDown:
+                let mods = event.modifierFlags.intersection([.command, .option, .control, .shift]).rawValue
+                if mods != 0 {
+                    hotkey = Hotkey(keyCode: UInt32(event.keyCode), modifiers: mods)
+                    stop()
+                }
+            default:
+                break
             }
-            return event
+        }
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .otherMouseDown, .rightMouseDown]) { event in
+            capture(event)
+            return event.type == .keyDown && event.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty
+                ? event : nil
+        }
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.otherMouseDown, .rightMouseDown]) { event in
+            capture(event)
         }
     }
 
     private func stop() {
         recording = false
-        if let m = monitor { NSEvent.removeMonitor(m); monitor = nil }
+        if let m = localMonitor { NSEvent.removeMonitor(m); localMonitor = nil }
+        if let m = globalMonitor { NSEvent.removeMonitor(m); globalMonitor = nil }
     }
 }
 
-/// "⌃⌥D" style display for a Hotkey.
+/// "⌃⌥D" or "Mouse btn 4 (side)" display for a Hotkey.
 func hotkeyDisplay(_ h: Hotkey) -> String {
+    if let button = h.mouseButton { return mouseButtonName(button) }
     let f = NSEvent.ModifierFlags(rawValue: h.modifiers)
     var s = ""
     if f.contains(.control) { s += "⌃" }
@@ -48,6 +67,18 @@ func hotkeyDisplay(_ h: Hotkey) -> String {
     if f.contains(.shift) { s += "⇧" }
     if f.contains(.command) { s += "⌘" }
     return s + keyName(h.keyCode)
+}
+
+func mouseButtonName(_ button: Int) -> String {
+    switch button {
+    case 0: return NSLocalizedString("Left click", comment: "mouse hotkey")
+    case 1: return NSLocalizedString("Right click", comment: "mouse hotkey")
+    case 2: return NSLocalizedString("Middle click", comment: "mouse hotkey")
+    case 3: return NSLocalizedString("Mouse btn 4 (side)", comment: "mouse hotkey")
+    case 4: return NSLocalizedString("Mouse btn 5 (side)", comment: "mouse hotkey")
+    default:
+        return String(format: NSLocalizedString("Mouse btn %d", comment: "mouse hotkey"), button + 1)
+    }
 }
 
 private func keyName(_ code: UInt32) -> String {

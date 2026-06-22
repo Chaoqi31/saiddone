@@ -12,10 +12,17 @@ public struct PipelineResult: Sendable {
     public var text: String
     public var rawTranscript: String
     public var elapsed: TimeInterval
-    public init(text: String, rawTranscript: String, elapsed: TimeInterval) {
+    /// Post-ASR, dictionary-corrected text before polish (for fast-insert UX).
+    public var draftText: String?
+    /// True when polish returned the same text as the draft (timeout degrade or no change).
+    public var polishSkipped: Bool
+    public init(text: String, rawTranscript: String, elapsed: TimeInterval,
+                draftText: String? = nil, polishSkipped: Bool = false) {
         self.text = text
         self.rawTranscript = rawTranscript
         self.elapsed = elapsed
+        self.draftText = draftText
+        self.polishSkipped = polishSkipped
     }
 }
 
@@ -43,42 +50,52 @@ public struct PipelineOrchestrator: Sendable {
     }
 
     /// Run audio through the full pipeline for `mode`. `context` is the resolved App Profile tone.
-    public func run(_ audio: AudioSamples, mode: Mode, context: PolishContext = .none,
-                    languageHint: String? = nil) async throws -> PipelineResult {
+    /// ASR + dictionary cleanup only (for fast-insert dictation).
+    public func transcribeToDraft(_ audio: AudioSamples, languageHint: String? = nil) async throws -> (raw: String, corrected: String) {
+        onProgress?(0.05, "transcribing")
+        let raw = try await asr.transcribe(audio.trimmedSilence(), languageHint: languageHint)
+        let corrected = dictionary.apply(to: ASRCleanup.strip(raw))
+        onProgress?(0.45, "polishing")
+        return (raw, corrected)
+    }
+
+    /// Polish/translate after `transcribeToDraft`.
+    public func finish(_ corrected: String, mode: Mode, context: PolishContext) async throws -> PipelineResult {
         let clock = ContinuousClock()
         let start = clock.now
-        onProgress?(0.05, "transcribing")
-
-        let raw = try await asr.transcribe(audio.trimmedSilence(), languageHint: languageHint)
-        onProgress?(0.45, "polishing")
-        let cleaned = ASRCleanup.strip(raw)          // drop hallucinations (谢谢大家 …)
-        let corrected = dictionary.apply(to: cleaned) // user term corrections
-
-        // Nothing intelligible captured — skip the LLM (it would hallucinate on empty input) and let
-        // the caller show a "no speech" hint rather than insert garbage.
         guard !corrected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return PipelineResult(text: "", rawTranscript: raw, elapsed: start.duration(to: clock.now).asSeconds)
+            return PipelineResult(text: "", rawTranscript: corrected, elapsed: 0)
         }
-
         let final: String
         switch mode {
         case .dictation:
             final = try await polishWithBudget(corrected, context: context)
         case .translation(let target):
-            // Polish first for clean source, then translate (ARCHITECTURE: Polish → Translate).
             let polished = try await polishWithBudget(corrected, context: context)
             guard let translated = try await withBudget({ try await llm.translate(polished, to: target, context: context) }) else {
                 throw ProviderError.latencyBudgetExceeded
             }
             final = translated
         case .rewrite:
-            // Rewrite Mode is handled by the app (needs the selected text); treat as polish here.
             final = try await polishWithBudget(corrected, context: context)
         }
-
         onProgress?(1.0, "done")
         let elapsed = start.duration(to: clock.now).asSeconds
-        return PipelineResult(text: final, rawTranscript: raw, elapsed: elapsed)
+        let skipped = final.trimmingCharacters(in: .whitespacesAndNewlines)
+            == corrected.trimmingCharacters(in: .whitespacesAndNewlines)
+        return PipelineResult(text: final, rawTranscript: corrected, elapsed: elapsed,
+                              draftText: corrected, polishSkipped: skipped)
+    }
+
+    public func run(_ audio: AudioSamples, mode: Mode, context: PolishContext = .none,
+                    languageHint: String? = nil) async throws -> PipelineResult {
+        let (raw, corrected) = try await transcribeToDraft(audio, languageHint: languageHint)
+        guard !corrected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return PipelineResult(text: "", rawTranscript: raw, elapsed: 0)
+        }
+        var result = try await finish(corrected, mode: mode, context: context)
+        result.rawTranscript = raw
+        return result
     }
 
     /// Polish under the latency budget: timeout → the input text as-is (degrade, don't error).

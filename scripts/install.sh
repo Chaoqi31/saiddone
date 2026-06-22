@@ -8,4 +8,10 @@ cd "$(dirname "$0")/.."
 DEST="/Applications/SaidDone.app"
 rm -rf "$DEST" 2>/dev/null || { echo "Can't write $DEST — drag dist/SaidDone.app into /Applications manually."; exit 1; }
 cp -R dist/SaidDone.app "$DEST"
+if [ -f .env ]; then
+  SUPPORT="$HOME/Library/Application Support/SaidDone"
+  mkdir -p "$SUPPORT"
+  cp .env "$SUPPORT/.env"
+  echo "Synced .env -> $SUPPORT/.env"
+fi
 echo "Installed -> $DEST"

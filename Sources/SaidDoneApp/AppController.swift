@@ -117,7 +117,8 @@ final class AppController: NSObject, NSApplicationDelegate {
     override init() {
         let dir = (try? ConfigStore.defaultDirectory()) ?? FileManager.default.temporaryDirectory
         let store = ConfigStore(directory: dir)
-        let cfg = store.load()
+        var cfg = store.load()
+        _ = EnvLoader.mergeInto(&cfg, store: store)
         self.configStore = store
         self.config = cfg
         self.localization = LocalizationManager(override: cfg.appLanguage)
@@ -620,51 +621,80 @@ final class AppController: NSObject, NSApplicationDelegate {
             onProgress: { [weak self] progress, stage in
                 Task { @MainActor in self?.overlay.updateProcessing(progress: progress, stageKey: stage) }
             })
-        Task { @MainActor in
-            defer { self.isWorking = false; self.refreshUI() }
-            do {
-                let result: PipelineResult
-                if case .rewrite = mode {
-                    let instruction = try await self.asr.transcribe(audio.trimmedSilence(), languageHint: self.config.asrLanguage)
-                    let selection = InsertionService.grabSelection()
-                    let out = try await self.llm.rewrite(instruction, selection: selection, context: context)
-                    result = PipelineResult(text: out, rawTranscript: "[rewrite] " + instruction, elapsed: 0)
-                } else {
-                    result = try await orch.run(audio, mode: mode, context: context,
-                                                languageHint: self.config.asrLanguage)
-                }
-                slog("pipeline done, rawLen=\(result.rawTranscript.count), textLen=\(result.text.count), elapsed=\(String(format: "%.2f", result.elapsed))s")
-                let finalText = self.config.voiceCommandsEnabled ? VoiceCommands.apply(result.text) : result.text
-                // No speech captured: don't insert an empty/garbage result or save an empty history row.
-                guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    slog("pipeline produced empty text — skipping insert")
-                    self.overlay.showError(NSLocalizedString("No speech detected — try again.", comment: "empty result"))
-                    return
-                }
-                // Save to history BEFORE inserting, so text is recoverable even if paste fails.
-                let modeStr: String = {
-                    switch mode { case .translation: return "translation"; case .rewrite: return "rewrite"; default: return "dictation" }
-                }()
-                let id = UUID()
-                var audioFile: String? = nil
-                if !audio.samples.isEmpty {
-                    let name = "\(id).wav"
-                    try? FileManager.default.createDirectory(at: self.historyStore.audioDirectory, withIntermediateDirectories: true)
-                    if (try? audio.wavData().write(to: self.historyStore.audioURL(name))) != nil { audioFile = name }
-                }
-                self.historyStore.append(HistoryEntry(id: id, date: Date(), mode: modeStr,
-                                                      raw: result.rawTranscript, text: finalText, audioFile: audioFile))
-                self.historyModel.refresh()
-                InsertionService.insert(finalText, autoCopy: self.config.autoCopyToClipboard)
-                if self.config.soundsEnabled { SoundFx.done() }
-                self.overlay.showDone(self.config.autoCopyToClipboard
-                    ? NSLocalizedString("Inserted · on clipboard", comment: "dictation done toast, auto-copy on")
-                    : NSLocalizedString("Inserted", comment: "dictation done toast"))
-            } catch {
-                slog("pipeline error: \(error)")
-                NSSound.beep()
-                self.overlay.showError(Self.friendlyError(error))
-            }
+        Task { @MainActor [mode, audio, orch, context] in
+            await self.runPipeline(mode: mode, audio: audio, orch: orch, context: context)
         }
     }
+
+    private func runPipeline(mode: Mode, audio: AudioSamples, orch: PipelineOrchestrator,
+                             context: PolishContext) async {
+        defer { isWorking = false; refreshUI() }
+        do {
+            let result: PipelineResult
+            let fastBox = FastInsertBox()
+            if case .rewrite = mode {
+                let instruction = try await asr.transcribe(audio.trimmedSilence(), languageHint: config.asrLanguage)
+                let selection = InsertionService.grabSelection()
+                let out = try await llm.rewrite(instruction, selection: selection, context: context)
+                result = PipelineResult(text: out, rawTranscript: "[rewrite] " + instruction, elapsed: 0)
+            } else {
+                let useFast = config.fastInsertBeforePolish
+                    && { if case .dictation = mode { return true }; return false }()
+                if useFast {
+                    let (raw, corrected) = try await orch.transcribeToDraft(audio, languageHint: config.asrLanguage)
+                    let draft = config.voiceCommandsEnabled ? VoiceCommands.apply(corrected) : corrected
+                    if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        InsertionService.insert(draft, autoCopy: config.autoCopyToClipboard)
+                        fastBox.text = draft
+                    }
+                    var finished = try await orch.finish(corrected, mode: mode, context: context)
+                    finished.rawTranscript = raw
+                    result = finished
+                } else {
+                    result = try await orch.run(audio, mode: mode, context: context, languageHint: config.asrLanguage)
+                }
+            }
+            slog("pipeline done, rawLen=\(result.rawTranscript.count), textLen=\(result.text.count), elapsed=\(String(format: "%.2f", result.elapsed))s polishSkipped=\(result.polishSkipped)")
+            let finalText = config.voiceCommandsEnabled ? VoiceCommands.apply(result.text) : result.text
+            guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                slog("pipeline produced empty text — skipping insert")
+                overlay.showError(NSLocalizedString("No speech detected — try again.", comment: "empty result"))
+                return
+            }
+            let modeStr: String = {
+                switch mode { case .translation: return "translation"; case .rewrite: return "rewrite"; default: return "dictation" }
+            }()
+            let id = UUID()
+            var audioFile: String? = nil
+            if !audio.samples.isEmpty {
+                let name = "\(id).wav"
+                try? FileManager.default.createDirectory(at: historyStore.audioDirectory, withIntermediateDirectories: true)
+                if (try? audio.wavData().write(to: historyStore.audioURL(name))) != nil { audioFile = name }
+            }
+            historyStore.append(HistoryEntry(
+                id: id, date: Date(), mode: modeStr, raw: result.rawTranscript, text: finalText,
+                audioFile: audioFile, elapsed: result.elapsed > 0 ? result.elapsed : nil,
+                polishSkipped: result.polishSkipped ? true : nil))
+            historyModel.refresh()
+            if let draft = fastBox.text {
+                if finalText != draft {
+                    InsertionService.replaceViaUndo(with: finalText, autoCopy: config.autoCopyToClipboard)
+                }
+            } else {
+                InsertionService.insert(finalText, autoCopy: config.autoCopyToClipboard)
+            }
+            if config.soundsEnabled { SoundFx.done() }
+            overlay.showDone(config.autoCopyToClipboard
+                ? NSLocalizedString("Inserted · on clipboard", comment: "dictation done toast, auto-copy on")
+                : NSLocalizedString("Inserted", comment: "dictation done toast"))
+        } catch {
+            slog("pipeline error: \(error)")
+            NSSound.beep()
+            overlay.showError(Self.friendlyError(error))
+        }
+    }
+}
+
+private final class FastInsertBox: @unchecked Sendable {
+    var text: String?
 }

@@ -37,6 +37,16 @@ enum InsertionService {
     }
 
     private static func synthesizeCommandV() { synthesizeCmd(CGKeyCode(kVK_ANSI_V)) }
+    private static func synthesizeCommandZ() { synthesizeCmd(CGKeyCode(kVK_ANSI_Z)) }
+
+    /// Undo the last paste (⌘Z) and insert polished text — used after fast-insert draft.
+    static func replaceViaUndo(with text: String, autoCopy: Bool = false) {
+        guard !text.isEmpty else { return }
+        synthesizeCommandZ()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            insert(text, autoCopy: autoCopy)
+        }
+    }
 
     private static func synthesizeCmd(_ key: CGKeyCode) {
         let source = CGEventSource(stateID: .combinedSessionState)

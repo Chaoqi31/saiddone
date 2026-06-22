@@ -175,7 +175,16 @@
 "Inserted · on clipboard" = "已插入 · 已复制到剪贴板";
 
 /* Hotkey recorder */
-"Press shortcut…" = "请按快捷键…";
+"Press shortcut…" = "请按快捷键或鼠标侧键…";
+"Left click" = "左键";
+"Right click" = "右键";
+"Middle click" = "中键";
+"Mouse btn 4 (side)" = "鼠标侧键 4";
+"Mouse btn 5 (side)" = "鼠标侧键 5";
+"Mouse btn %d" = "鼠标键 %d";
+"Three modes need separate shortcuts: dictation types new text; rewrite needs selected text plus a spoken instruction. Keyboard shortcuts need a modifier (⌃⌥ etc.). Mouse side buttons work too — grant Accessibility so SaidDone can listen globally." = "三种模式需要不同快捷键：听写直接输入；改写需先选中文字再说指令。键盘快捷键需配合修饰键（⌃⌥ 等）。鼠标侧键也可用——请在系统设置中授予 SaidDone「辅助功能」权限。";
+"Insert draft immediately, then polish in place" = "先插入转写稿，润色后替换";
+"unpolished" = "未润色";
 
 /* Menu bar */
 "Speech: %@ · AI: %@" = "语音：%@ · AI：%@";

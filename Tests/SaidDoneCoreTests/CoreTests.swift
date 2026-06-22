@@ -72,7 +72,7 @@ final class ConfigTests: XCTestCase {
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
 
-        let store = ConfigStore(directory: dir)
+        let store = ConfigStore(directory: dir, secrets: KeychainSecrets(service: "SaidDoneTests.\(UUID().uuidString)"))
         var cfg = AppConfig.default
         cfg.targetLanguage = "zh"
         cfg.dictionary.entries.append(.init(wrong: "a", right: "b"))

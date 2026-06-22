@@ -21,9 +21,12 @@ final class ConfigModel: ObservableObject {
         panel.nameFieldStringValue = "saiddone-config.json"
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        var exportConfig = config
+        exportConfig.cloud.llmKey = ""
+        exportConfig.cloud.asrKey = ""
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try? enc.encode(config).write(to: url)
+        try? enc.encode(exportConfig).write(to: url)
     }
 
     func importConfig() {
@@ -32,7 +35,8 @@ final class ConfigModel: ObservableObject {
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url,
               let data = try? Data(contentsOf: url),
-              let cfg = try? JSONDecoder().decode(AppConfig.self, from: data) else { return }
+              var cfg = try? JSONDecoder().decode(AppConfig.self, from: data) else { return }
+        // Inline keys in imported JSON are migrated to Keychain on save.
         config = cfg
         save()
     }
@@ -98,10 +102,14 @@ struct SettingsView: View {
                 Text("Match your main spoken language — auto-detect is unreliable for zh-en code-switching.")
             }
 
-            Section("Shortcuts") {
+            Section {
                 HotkeyRecorder(label: "Dictation", hotkey: $model.config.dictationHotkey)
                 HotkeyRecorder(label: "Translation", hotkey: $model.config.translationHotkey)
                 HotkeyRecorder(label: "Rewrite", hotkey: $model.config.rewriteHotkey)
+            } header: {
+                Text("Shortcuts")
+            } footer: {
+                Text("Three modes need separate shortcuts: dictation types new text; rewrite needs selected text plus a spoken instruction. Keyboard shortcuts need a modifier (⌃⌥ etc.). Mouse side buttons work too — grant Accessibility so SaidDone can listen globally.")
             }
 
             Section {
@@ -122,6 +130,8 @@ struct SettingsView: View {
                 Toggle("Record from built-in mic (keep Bluetooth audio in hi-fi)", isOn: $model.config.preferBuiltInMic)
                 Toggle("Voice commands (say “换行” / “new line” to break lines)", isOn: $model.config.voiceCommandsEnabled)
                 Toggle("Show live transcription preview while recording", isOn: $model.config.showLivePreview)
+                Toggle("Insert draft immediately, then polish in place", isOn: $model.config.fastInsertBeforePolish)
+                    .help("Shows the raw transcript right after you stop, then swaps in the polished version (⌘Z + paste). Dictation only.")
                 HStack {
                     Text("AI step timeout")
                     Spacer()
@@ -249,19 +259,29 @@ struct SettingsView: View {
     private var cloud: some View {
         Form {
             Section {
-                Label("Keys are saved in config.json and audio/text leaves your device. Pick Cloud for a stage in the Providers tab to use these.",
-                      systemImage: "lock.open")
+                Label("API keys are stored in Keychain (never in exported JSON). Audio/text leaves your device when Cloud is selected in Providers.",
+                      systemImage: "lock.fill")
                     .font(.callout).foregroundStyle(.secondary)
+                Text("Optional: place a `.env` with DEEPSEEK_API_KEY in Application Support/SaidDone/ to auto-fill on launch.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            Section("LLM — polish / translate / rewrite") {
+            Section {
                 SecureField("API key", text: $model.config.cloud.llmKey)
                 TextField("Base URL", text: $model.config.cloud.llmBaseURL)
                 TextField("Model", text: $model.config.cloud.llmModel)
+            } header: {
+                Text("LLM — polish / translate / rewrite")
+            } footer: {
+                Text("Examples: deepseek-v4-flash or deepseek-chat @ https://api.deepseek.com · gpt-4o-mini @ OpenAI.")
             }
-            Section("ASR — speech (OpenAI-compatible)") {
+            Section {
                 SecureField("API key", text: $model.config.cloud.asrKey)
                 TextField("Base URL", text: $model.config.cloud.asrBaseURL)
                 TextField("Model", text: $model.config.cloud.asrModel)
+            } header: {
+                Text("ASR — speech (OpenAI-compatible)")
+            } footer: {
+                Text("Examples: gpt-4o-mini-transcribe (fast), gpt-4o-transcribe (accurate), whisper-1. SiliconFlow SenseVoice also works.")
             }
             Section {
                 TextField("Host", text: $model.config.cloud.proxyHost)

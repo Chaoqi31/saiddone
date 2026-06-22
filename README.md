@@ -12,7 +12,7 @@ Press a hotkey, speak, and polished text lands at your cursor — in any app.
 ![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
 ![Swift](https://img.shields.io/badge/Swift-6.2-f05138?logo=swift&logoColor=white)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-required-555)
-![Tests](https://img.shields.io/badge/tests-49%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-50%2B%20passing-brightgreen)
 
 </div>
 
@@ -33,9 +33,10 @@ Press a hotkey, speak, and polished text lands at your cursor — in any app.
 | **Custom dictionary** | Fix a word once in History; it's corrected automatically next time. |
 | **Personalization** | User profile + per-app tone profiles (like ChatGPT custom instructions). |
 | **History** | Search, edit, re-insert, export — with original audio saved on device. |
-| **Polished UX** | Setup Assistant, bilingual UI (中文 / English), menu-bar + Dock, rebindable hotkeys, recording overlay, launch-at-login, VoiceOver support. |
+| **Polished UX** | Setup Assistant, bilingual UI (中文 / English), menu-bar + Dock, rebindable hotkeys (keyboard **or mouse side buttons**), recording overlay with 0→1 progress, launch-at-login, VoiceOver support. |
+| **Fast dictation** | Optional: insert the ASR draft immediately, then swap in the polished text when ready. |
 
-**Production hardening:** cloud API keys live in **Keychain** (never in exported JSON); configurable **AI step timeout** degrades gracefully to your raw transcript instead of hanging; shortcut conflict warnings; no transcribed text in debug logs.
+**v1.0 highlights:** Keychain for API keys · `.env` in Application Support · cloud timeout scales with speech length · history shows timing and unpolished entries.
 
 ## Shortcuts
 
@@ -136,7 +137,7 @@ Native Swift / SwiftUI, three targets:
 ## Development
 
 ```sh
-swift test                 # 49 unit tests (core pipeline, providers, app-layer errors/privacy)
+swift test                 # 50+ unit tests (core pipeline, providers, app-layer)
 ./scripts/bundle-xcode.sh  # build a runnable SaidDone.app (with MLX metallib)
 ./scripts/release.sh       # build a shareable DMG
 ./scripts/notarize.sh      # notarized DMG (needs an Apple Developer account)

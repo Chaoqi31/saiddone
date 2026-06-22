@@ -302,7 +302,7 @@ private struct HomePane: View {
     }
 
     private var appVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "0.9.0"
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.0.0"
     }
 
     private func permRow(_ label: LocalizedStringKey, _ pane: String) -> some View {
@@ -444,6 +444,14 @@ private struct HistoryPane: View {
                     .background(.quaternary, in: Capsule())
                 Text(e.date.formatted(date: .omitted, time: .shortened))
                     .font(.caption2).foregroundStyle(.secondary)
+                if let s = e.elapsed, s > 0 {
+                    Text(String(format: "%.1fs", s))
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                if e.polishSkipped == true {
+                    Text(NSLocalizedString("unpolished", comment: "history badge"))
+                        .font(.caption2).foregroundStyle(.orange)
+                }
                 Spacer()
                 Button { model.onReinsert?(e.text) } label: { Image(systemName: "arrow.up.left.square") }
                     .buttonStyle(.borderless).help("Insert at cursor")

@@ -1,13 +1,36 @@
 import Foundation
 import Security
 
-/// A global hotkey: Carbon keycode + modifier flags (raw NSEvent.ModifierFlags rawValue).
+/// A global shortcut: keyboard (Carbon keycode + modifiers) or a mouse button (NSEvent.buttonNumber).
 public struct Hotkey: Codable, Sendable, Equatable {
     public var keyCode: UInt32
     public var modifiers: UInt
-    public init(keyCode: UInt32, modifiers: UInt) {
+    /// When set, fires on this mouse button instead of a keyboard key.
+    /// NSEvent numbering: 0=left, 1=right, 2=middle, 3/4=typical side (back/forward).
+    public var mouseButton: Int?
+
+    public var isMouse: Bool { mouseButton != nil }
+
+    public init(keyCode: UInt32 = 0, modifiers: UInt = 0, mouseButton: Int? = nil) {
         self.keyCode = keyCode
         self.modifiers = modifiers
+        self.mouseButton = mouseButton
+    }
+
+    enum CodingKeys: String, CodingKey { case keyCode, modifiers, mouseButton }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        keyCode = try c.decode(UInt32.self, forKey: .keyCode)
+        modifiers = try c.decode(UInt.self, forKey: .modifiers)
+        mouseButton = try c.decodeIfPresent(Int.self, forKey: .mouseButton)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(keyCode, forKey: .keyCode)
+        try c.encode(modifiers, forKey: .modifiers)
+        try c.encodeIfPresent(mouseButton, forKey: .mouseButton)
     }
 }
 
@@ -162,6 +185,8 @@ public struct AppConfig: Codable, Sendable {
     public var huggingFaceEndpoint: String
     /// UI language override: "" = follow the system; otherwise an lproj code like "en" / "zh-Hans".
     public var appLanguage: String
+    /// Dictation: insert the ASR draft immediately, then undo+replace when polish finishes (feels faster).
+    public var fastInsertBeforePolish: Bool
 
     public init(
         dictationHotkey: Hotkey,
@@ -185,11 +210,13 @@ public struct AppConfig: Codable, Sendable {
         userProfile: String = "",
         onboardingCompleted: Bool = false,
         huggingFaceEndpoint: String = "",
-        appLanguage: String = ""
+        appLanguage: String = "",
+        fastInsertBeforePolish: Bool = true
     ) {
         self.onboardingCompleted = onboardingCompleted
         self.huggingFaceEndpoint = huggingFaceEndpoint
         self.appLanguage = appLanguage
+        self.fastInsertBeforePolish = fastInsertBeforePolish
         self.launchAtLogin = launchAtLogin
         self.autoCopyToClipboard = autoCopyToClipboard
         self.soundsEnabled = soundsEnabled
@@ -238,6 +265,7 @@ public struct AppConfig: Codable, Sendable {
         onboardingCompleted = try c.decodeIfPresent(Bool.self, forKey: .onboardingCompleted) ?? false
         huggingFaceEndpoint = try c.decodeIfPresent(String.self, forKey: .huggingFaceEndpoint) ?? ""
         appLanguage = try c.decodeIfPresent(String.self, forKey: .appLanguage) ?? ""
+        fastInsertBeforePolish = try c.decodeIfPresent(Bool.self, forKey: .fastInsertBeforePolish) ?? true
     }
 
     /// Zero-key local defaults (GOALS B4). Hotkeys: ⌃⌥D (dictation), ⌃⌥T (translation) — avoid
