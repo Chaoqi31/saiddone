@@ -6,7 +6,7 @@ SaidDone is a menu-bar voice-to-text app for **Apple Silicon Macs running macOS 
 
 ## 1. Download
 
-Download `SaidDone.dmg` from the latest [Release](../../releases).
+Download **[SaidDone.dmg](https://github.com/Chaoqi31/saiddone/releases/latest/download/SaidDone.dmg)** from the latest [Release](../../releases).
 
 <!-- screenshot: GitHub Releases page with SaidDone.dmg asset highlighted -->
 

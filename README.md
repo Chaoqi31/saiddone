@@ -9,10 +9,19 @@
 Press a hotkey, speak, and polished text lands at your cursor — in any app.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![CI](https://github.com/Chaoqi31/saiddone/actions/workflows/ci.yml/badge.svg)](https://github.com/Chaoqi31/saiddone/actions/workflows/ci.yml)
 ![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
 ![Swift](https://img.shields.io/badge/Swift-6.2-f05138?logo=swift&logoColor=white)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-required-555)
 ![Tests](https://img.shields.io/badge/tests-53%2B%20passing-brightgreen)
+
+<br />
+
+[![Download SaidDone for macOS](https://img.shields.io/badge/Download-SaidDone.dmg-007AFF?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Chaoqi31/saiddone/releases/latest/download/SaidDone.dmg)
+
+<br />
+
+[Latest release notes](https://github.com/Chaoqi31/saiddone/releases/latest) · [Install guide](INSTALL.md)
 
 </div>
 
@@ -52,13 +61,14 @@ All shortcuts are rebindable in **Settings → General**.
 
 ### Download
 
-1. Grab `SaidDone.dmg` from the latest [Release](../../releases) (or build one with `./scripts/release.sh`).
-2. Open the DMG and drag **SaidDone** onto **Applications**.
-3. First launch is blocked by Gatekeeper (open-source builds are ad-hoc signed, not notarized). Allow it **once**:
+**[⬇ Download SaidDone.dmg](https://github.com/Chaoqi31/saiddone/releases/latest/download/SaidDone.dmg)** (Apple Silicon · macOS 14+)
+
+1. Open the DMG and drag **SaidDone** onto **Applications**.
+2. First launch is blocked by Gatekeeper (open-source builds are ad-hoc signed, not notarized). Allow it **once**:
    - **macOS 14 (Sonoma):** right-click **SaidDone → Open → Open**.
    - **macOS 15 (Sequoia):** double-click it, then **System Settings → Privacy & Security → "Open Anyway"**.
    - Or in Terminal: `xattr -dr com.apple.quarantine /Applications/SaidDone.app`
-4. The **Setup Assistant** opens automatically — grants Microphone + Accessibility permissions, lets you pick local/cloud engines, and downloads models.
+3. The **Setup Assistant** opens automatically — grants Microphone + Accessibility permissions, lets you pick local/cloud engines, and downloads models.
 
 See **[INSTALL.md](INSTALL.md)** for the full walkthrough.
 
@@ -137,10 +147,12 @@ Native Swift / SwiftUI, three targets:
 ## Development
 
 ```sh
-swift test                 # 50+ unit tests (core pipeline, providers, app-layer)
+swift test                 # 53 unit tests (core pipeline, providers, app-layer)
 ./scripts/bundle-xcode.sh  # build a runnable SaidDone.app (with MLX metallib)
 ./scripts/release.sh       # build a shareable DMG
 ./scripts/notarize.sh      # notarized DMG (needs an Apple Developer account)
 ```
+
+**Releases:** push a version tag (`git tag v1.2.0 && git push origin v1.2.0`) — GitHub Actions builds `SaidDone.dmg` and attaches it to the Release automatically.
 
 Contributions welcome — open an issue or PR.

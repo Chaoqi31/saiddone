@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Install Metal Toolchain
+        run: xcodebuild -downloadComponent MetalToolchain
+
+      - name: Run tests
+        run: swift test
+
+      - name: Resolve version from tag
+        id: version
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Building SaidDone v$VERSION"
+
+      - name: Build DMG
+        env:
+          SAIDDONE_VERSION: ${{ steps.version.outputs.version }}
+        run: ./scripts/release.sh
+
+      - name: Extract release notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          awk -v ver="$VERSION" '
+            $0 ~ "^# SaidDone v" ver "$" { found=1 }
+            found { print }
+            found && /^# SaidDone v/ && $0 !~ "^# SaidDone v" ver "$" { exit }
+          ' RELEASE_NOTES.md > release-body.md
+          if [ ! -s release-body.md ]; then
+            cp RELEASE_NOTES.md release-body.md
+          fi
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: SaidDone v${{ steps.version.outputs.version }}
+          body_path: release-body.md
+          files: dist/SaidDone.dmg
+          draft: false
+          prerelease: false
