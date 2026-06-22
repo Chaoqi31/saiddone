@@ -92,6 +92,8 @@
 "Record from built-in mic (keep Bluetooth audio in hi-fi)" = "用内置麦克风录音（蓝牙耳机保持高保真）";
 "Voice commands (say “换行” / “new line” to break lines)" = "语音命令（说“换行”/“new line”换行）";
 "Show live transcription preview while recording" = "录音时显示实时转写预览";
+"AI step timeout" = "AI 步骤超时";
+"Off" = "关";
 "Export Settings…" = "导出设置…";
 "Import Settings…" = "导入设置…";
 "Export / import your full configuration as JSON. Note: this includes any cloud API keys — share the file carefully." = "以 JSON 导出/导入完整配置。注意：其中包含云端 API Key — 分享时请谨慎。";
@@ -157,6 +159,7 @@
 "AI model ready" = "AI 模型就绪";
 "Download failed — check network / HuggingFace access" = "下载失败 — 请检查网络 / HuggingFace 访问";
 "Loading models… (first run downloads, 20–60s)" = "正在加载模型…（首次运行需下载，20–60 秒）";
+"Preparing models…" = "正在准备模型…";
 "Ready" = "就绪";
 
 /* Recording overlay */

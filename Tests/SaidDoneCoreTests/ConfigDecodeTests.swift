@@ -34,4 +34,28 @@ final class ConfigDecodeTests: XCTestCase {
         XCTAssertFalse(cfg.onboardingCompleted)
         XCTAssertEqual(cfg.huggingFaceEndpoint, "")
     }
+
+    func testConfigStorePersistsCloudKeysOutsideJSON() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let secrets = KeychainSecrets(service: "SaidDoneTests.\(UUID().uuidString)")
+        defer {
+            try? secrets.delete(account: "llmKey")
+            try? secrets.delete(account: "asrKey")
+        }
+        let store = ConfigStore(directory: dir, secrets: secrets)
+        var cfg = AppConfig.default
+        cfg.cloud.llmKey = "llm-secret"
+        cfg.cloud.asrKey = "asr-secret"
+
+        try store.save(cfg)
+
+        let json = try String(contentsOf: store.url, encoding: .utf8)
+        XCTAssertFalse(json.contains("llm-secret"))
+        XCTAssertFalse(json.contains("asr-secret"))
+        XCTAssertEqual(store.load().cloud.llmKey, "llm-secret")
+        XCTAssertEqual(store.load().cloud.asrKey, "asr-secret")
+    }
 }

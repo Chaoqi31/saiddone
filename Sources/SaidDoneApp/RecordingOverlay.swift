@@ -35,6 +35,7 @@ final class RecordingOverlay {
         startDate = Date()
         let panel = self.panel ?? makePanel()
         self.panel = panel
+        panel.setContentSize(NSSize(width: OverlayView.baseWidth, height: panel.frame.height))
         reposition(panel)
         panel.orderFrontRegardless()
         announce(label)
@@ -98,7 +99,15 @@ final class RecordingOverlay {
     }
 
     func updateLevel(_ level: Float) { model.pushLevel(level) }
-    func updatePreview(_ text: String) { model.previewText = text }
+
+    func updatePreview(_ text: String) {
+        model.previewText = text
+        // Live preview needs room to read — widen the panel once text starts arriving.
+        if let panel, !text.isEmpty, panel.frame.width != OverlayView.previewWidth {
+            panel.setContentSize(NSSize(width: OverlayView.previewWidth, height: panel.frame.height))
+            reposition(panel)
+        }
+    }
 
     /// Announce a state change to VoiceOver — the floating HUD wouldn't otherwise be read aloud, so a
     /// blind user has no idea recording started, a result was inserted, or an error occurred.
@@ -132,6 +141,9 @@ final class RecordingOverlay {
 }
 
 private struct OverlayView: View {
+    static let baseWidth: CGFloat = 300
+    static let previewWidth: CGFloat = 440
+
     @ObservedObject var model: OverlayModel
 
     var body: some View {
@@ -166,8 +178,9 @@ private struct OverlayView: View {
                     if model.previewText.isEmpty {
                         waveform.frame(width: 96, height: 22)
                     } else {
-                        Text(model.previewText).font(.system(size: 11)).lineLimit(1)
-                            .truncationMode(.head).frame(width: 96, alignment: .leading)
+                        Text(model.previewText).font(.system(size: 11)).lineLimit(2)
+                            .truncationMode(.head)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     Text(timeString).font(.system(size: 11, weight: .medium).monospacedDigit())
                         .foregroundStyle(.secondary)
@@ -181,7 +194,7 @@ private struct OverlayView: View {
             }
         }
         .padding(.horizontal, 14)
-        .frame(width: 300, height: 56)
+        .frame(width: model.previewText.isEmpty ? Self.baseWidth : Self.previewWidth, height: 56)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
     }

@@ -21,14 +21,7 @@ enum InsertionService {
         }
 
         let pasteboard = NSPasteboard.general
-        let saved = pasteboard.pasteboardItems?.compactMap { item -> NSPasteboardItem? in
-            let copy = NSPasteboardItem()
-            var wroteAny = false
-            for type in item.types {
-                if let data = item.data(forType: type) { copy.setData(data, forType: type); wroteAny = true }
-            }
-            return wroteAny ? copy : nil
-        }
+        let saved = PasteboardSnapshot(pasteboard)
 
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
@@ -39,8 +32,7 @@ enum InsertionService {
         // autoCopy = leave the inserted text on the clipboard instead of restoring.
         guard !autoCopy else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-            pasteboard.clearContents()
-            if let saved, !saved.isEmpty { pasteboard.writeObjects(saved) }
+            saved.restore(to: pasteboard)
         }
     }
 
@@ -61,8 +53,31 @@ enum InsertionService {
     static func grabSelection() -> String {
         guard AXIsProcessTrusted() else { return "" }
         let pb = NSPasteboard.general
+        let saved = PasteboardSnapshot(pb)
         synthesizeCmd(CGKeyCode(kVK_ANSI_C))
         RunLoop.current.run(until: Date().addingTimeInterval(0.18))   // let the copy land
-        return pb.string(forType: .string) ?? ""
+        let selection = pb.string(forType: .string) ?? ""
+        saved.restore(to: pb)
+        return selection
+    }
+}
+
+struct PasteboardSnapshot {
+    private let items: [NSPasteboardItem]
+
+    init(_ pasteboard: NSPasteboard) {
+        items = pasteboard.pasteboardItems?.compactMap { item -> NSPasteboardItem? in
+            let copy = NSPasteboardItem()
+            var wroteAny = false
+            for type in item.types {
+                if let data = item.data(forType: type) { copy.setData(data, forType: type); wroteAny = true }
+            }
+            return wroteAny ? copy : nil
+        } ?? []
+    }
+
+    func restore(to pasteboard: NSPasteboard) {
+        pasteboard.clearContents()
+        if !items.isEmpty { pasteboard.writeObjects(items) }
     }
 }

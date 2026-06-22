@@ -3,12 +3,15 @@ import SwiftUI
 import SaidDoneCore
 import SaidDoneProviders
 
-/// Append-only debug log to /tmp/saiddone.log (NSLog doesn't reliably surface for this bundle).
+/// Append-only debug log in Caches (NSLog doesn't reliably surface for this bundle).
 func slog(_ message: String) {
     NSLog("%@", message)
     let line = "\(Date()) \(message)\n"
     guard let data = line.data(using: .utf8) else { return }
-    let url = URL(fileURLWithPath: "/tmp/saiddone.log")
+    let dir = (FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first
+               ?? FileManager.default.temporaryDirectory).appendingPathComponent("SaidDone", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let url = dir.appendingPathComponent("saiddone.log")
     if let h = try? FileHandle(forWritingTo: url) {
         h.seekToEndOfFile(); h.write(data); try? h.close()
     } else {
@@ -36,6 +39,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private lazy var historyModel = HistoryModel(store: historyStore)
     private let overlay = RecordingOverlay()
     private var previewTask: Task<Void, Never>?
+    private var hotkeyWarning: String?
 
     /// Live transcription preview while recording (opt-in). Cancelled before the final pipeline runs.
     private func startPreviewLoop() {
@@ -132,6 +136,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             InsertionService.insert(text, autoCopy: self?.config.autoCopyToClipboard ?? false)
         }
         let n = registerHotkeys()
+        refreshUI()
         slog("launched, \(n) hotkeys registered — ASR=\(asr.id) LLM=\(llm.id)")
         LoginItem.apply(config.launchAtLogin)
 
@@ -265,7 +270,8 @@ final class AppController: NSObject, NSApplicationDelegate {
             onboardingModel.tryRecording = false
             onboardingModel.tryBusy = true
             let mode: Mode = onboardingModel.tryMode == 1 ? .translation(target: "en") : .dictation
-            let orch = PipelineOrchestrator(asr: asr, llm: llm, dictionary: config.dictionary)
+            let orch = PipelineOrchestrator(asr: asr, llm: llm, dictionary: config.dictionary,
+                                            llmTimeout: isPrewarming ? 0 : config.llmTimeoutSeconds)
             do {
                 let r = try await orch.run(audio, mode: mode, languageHint: config.asrLanguage)
                 onboardingModel.tryResult = r.text.isEmpty
@@ -314,7 +320,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         let merged = byKey.values.sorted { $0.wrong < $1.wrong }
         saveDictionary(merged)
         dictionaryModel.entries = merged   // reflect in an open window
-        slog("learned dictionary terms: \(terms.map { "\($0.wrong)->\($0.right)" }.joined(separator: ","))")
+        slog("learned dictionary terms: \(terms.count)")
     }
 
     /// Persist edited config and rebuild providers so changes take effect immediately.
@@ -328,6 +334,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         LoginItem.apply(newConfig.launchAtLogin)
         hotkeys.unregisterAll()
         registerHotkeys()
+        refreshUI()
     }
 
     /// Rebuild menu + icon for current state. Recording shows explicit Stop / Cancel.
@@ -337,9 +344,18 @@ final class AppController: NSObject, NSApplicationDelegate {
         // Status header: which engines are active, plus a warning if a chosen local model is missing.
         let engines = menuItem(engineSummary(), nil); engines.isEnabled = false
         menu.addItem(engines)
+        if isPrewarming {
+            let warming = menuItem(NSLocalizedString("Preparing models…", comment: "menu prewarm"),
+                                   nil, symbol: "hourglass")
+            warming.isEnabled = false
+            menu.addItem(warming)
+        }
         if missingLocalModelMessage() != nil {
             menu.addItem(menuItem(NSLocalizedString("Model not downloaded — open Setup", comment: "menu"),
                                   #selector(openMainWindow), symbol: "exclamationmark.triangle.fill"))
+        }
+        if let hotkeyWarning {
+            menu.addItem(menuItem(hotkeyWarning, #selector(openMainWindow), symbol: "keyboard"))
         }
         menu.addItem(.separator())
 
@@ -369,7 +385,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
 
         let recording = activeMode != nil
-        let name = recording ? "mic.fill" : (isWorking ? "hourglass" : "mic")
+        let name = recording ? "mic.fill" : (isWorking || isPrewarming ? "hourglass" : "mic")
         statusItem.button?.image = NSImage(systemSymbolName: name, accessibilityDescription: "SaidDone")
         statusItem.button?.contentTintColor = recording ? .systemRed : nil
         recording ? startBlink() : stopBlink()
@@ -407,12 +423,20 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     @objc private func stopAndInsert() { finishRecording() }
 
+    /// True while the launch model load runs (menu shows it; the latency budget stays off so a cold
+    /// load isn't mistaken for a hung polish).
+    private var isPrewarming = false
+
     /// Warm the ASR model at launch so first real use isn't a 20-40s mystery wait.
     func prewarm() async {
         slog("prewarming models…")
+        isPrewarming = true
+        refreshUI()
         _ = try? await asr.transcribe(AudioSamples(samples: [Float](repeating: 0, count: 1600)),
                                       languageHint: config.asrLanguage)
         _ = try? await llm.polish("warm up", context: .none)
+        isPrewarming = false
+        refreshUI()
         slog("models warm")
     }
 
@@ -421,12 +445,40 @@ final class AppController: NSObject, NSApplicationDelegate {
     @discardableResult
     private func registerHotkeys() -> Int {
         var n = 0
+        var failed: [String] = []
+        let duplicates = Self.duplicateHotkeyNames(config)
         if hotkeys.register(config.dictationHotkey, onPress: { [weak self] in self?.toggle(.dictation) }) { n += 1 }
+        else { failed.append(NSLocalizedString("Dictation", comment: "hotkey label")) }
         if hotkeys.register(config.translationHotkey, onPress: { [weak self] in
             self?.toggle(.translation(target: self?.config.targetLanguage ?? "en"))
         }) { n += 1 }
+        else { failed.append(NSLocalizedString("Translation", comment: "hotkey label")) }
         if hotkeys.register(config.rewriteHotkey, onPress: { [weak self] in self?.toggle(.rewrite) }) { n += 1 }
+        else { failed.append(NSLocalizedString("Rewrite", comment: "hotkey label")) }
+        let names = duplicates.isEmpty ? failed : duplicates
+        hotkeyWarning = names.isEmpty
+            ? nil
+            : String(format: NSLocalizedString("Shortcut conflict — open Settings (%@)", comment: "hotkey warning"),
+                     names.joined(separator: ", "))
         return n
+    }
+
+    static func duplicateHotkeyNames(_ config: AppConfig) -> [String] {
+        let keys: [(String, Hotkey)] = [
+            ("Dictation", config.dictationHotkey),
+            ("Translation", config.translationHotkey),
+            ("Rewrite", config.rewriteHotkey),
+        ]
+        var seen: [Hotkey] = []
+        var duplicates: [String] = []
+        for (name, hotkey) in keys {
+            if seen.contains(hotkey) {
+                duplicates.append(name)
+            } else {
+                seen.append(hotkey)
+            }
+        }
+        return duplicates
     }
 
     @objc private func toggleRewrite() { toggle(.rewrite) }
@@ -506,6 +558,16 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     /// Calm, user-facing message for a pipeline failure (technical detail stays in the log).
     static func friendlyError(_ error: Error) -> String {
+        // Match URLError by code first — the string scan below misses bare codes without a description.
+        if let ue = error as? URLError {
+            let network: Set<URLError.Code> = [
+                .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost,
+                .dnsLookupFailed, .cannotFindHost, .timedOut, .secureConnectionFailed,
+            ]
+            if network.contains(ue.code) {
+                return NSLocalizedString("Network unavailable. Check your connection and try again.", comment: "error")
+            }
+        }
         let s = "\(error)".lowercased()
         if s.contains("tls") || s.contains("-1200") || s.contains("offline") || s.contains("network")
             || s.contains("connection") || s.contains("timed out") || s.contains("could not connect") {
@@ -541,7 +603,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         var context = config.appProfiles.context(bundleID: bundleID, url: nil)
         context.userProfile = config.userProfile.isEmpty ? nil : config.userProfile
 
-        let orch = PipelineOrchestrator(asr: asr, llm: llm, dictionary: config.dictionary)
+        // No budget while models are still cold-loading — a first-launch load isn't a hung polish.
+        let orch = PipelineOrchestrator(asr: asr, llm: llm, dictionary: config.dictionary,
+                                        llmTimeout: isPrewarming ? 0 : config.llmTimeoutSeconds)
         Task { @MainActor in
             defer { self.isWorking = false; self.refreshUI() }
             do {
@@ -555,8 +619,7 @@ final class AppController: NSObject, NSApplicationDelegate {
                     result = try await orch.run(audio, mode: mode, context: context,
                                                 languageHint: self.config.asrLanguage)
                 }
-                slog("RAW: '\(result.rawTranscript)'")
-                slog("pipeline done -> '\(result.text)' (\(String(format: "%.2f", result.elapsed))s)")
+                slog("pipeline done, rawLen=\(result.rawTranscript.count), textLen=\(result.text.count), elapsed=\(String(format: "%.2f", result.elapsed))s")
                 let finalText = self.config.voiceCommandsEnabled ? VoiceCommands.apply(result.text) : result.text
                 // No speech captured: don't insert an empty/garbage result or save an empty history row.
                 guard !finalText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {

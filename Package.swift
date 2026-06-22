@@ -46,5 +46,7 @@ let package = Package(
         ),
         .testTarget(name: "SaidDoneCoreTests", dependencies: ["SaidDoneCore"]),
         .testTarget(name: "SaidDoneProvidersTests", dependencies: ["SaidDoneProviders"]),
+        // App-layer pure logic (error mapping etc.); the executable target is importable in tests.
+        .testTarget(name: "SaidDoneAppTests", dependencies: ["SaidDoneApp"]),
     ]
 )

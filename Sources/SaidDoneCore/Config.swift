@@ -1,4 +1,5 @@
 import Foundation
+import Security
 
 /// A global hotkey: Carbon keycode + modifier flags (raw NSEvent.ModifierFlags rawValue).
 public struct Hotkey: Codable, Sendable, Equatable {
@@ -25,7 +26,7 @@ public struct ProviderSelection: Codable, Sendable, Equatable {
     }
 }
 
-/// Opt-in cloud endpoints (OpenAI-compatible). Keys live in config.json — local dev tool; keep private.
+/// Opt-in cloud endpoints (OpenAI-compatible). Keys are stored in Keychain, not config.json.
 public struct CloudConfig: Codable, Sendable, Equatable {
     public var llmKey: String = ""
     public var llmBaseURL: String = "https://api.openai.com/v1"
@@ -37,6 +38,10 @@ public struct CloudConfig: Codable, Sendable, Equatable {
     public var proxyHost: String = ""
     public var proxyPort: Int = 0
     public init() {}
+
+    enum CodingKeys: String, CodingKey {
+        case llmKey, llmBaseURL, llmModel, asrKey, asrBaseURL, asrModel, proxyHost, proxyPort
+    }
 
     /// Lenient decode: missing keys fall back to defaults, so adding fields never breaks an existing
     /// config.json (a strict decode here once silently reset the whole config to the local default).
@@ -50,6 +55,66 @@ public struct CloudConfig: Codable, Sendable, Equatable {
         asrModel = try c.decodeIfPresent(String.self, forKey: .asrModel) ?? "gpt-4o-transcribe"
         proxyHost = try c.decodeIfPresent(String.self, forKey: .proxyHost) ?? ""
         proxyPort = try c.decodeIfPresent(Int.self, forKey: .proxyPort) ?? 0
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(llmBaseURL, forKey: .llmBaseURL)
+        try c.encode(llmModel, forKey: .llmModel)
+        try c.encode(asrBaseURL, forKey: .asrBaseURL)
+        try c.encode(asrModel, forKey: .asrModel)
+        try c.encode(proxyHost, forKey: .proxyHost)
+        try c.encode(proxyPort, forKey: .proxyPort)
+    }
+}
+
+public struct KeychainSecrets: Sendable {
+    public var service: String
+    public init(service: String = "SaidDone") { self.service = service }
+
+    public func get(account: String) -> String? {
+        var query = baseQuery(account: account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
+              let data = item as? Data else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    public func set(_ value: String, account: String) throws {
+        guard !value.isEmpty else { try delete(account: account); return }
+        let data = Data(value.utf8)
+        let query = baseQuery(account: account)
+        let update = [kSecValueData as String: data]
+        let status = SecItemUpdate(query as CFDictionary, update as CFDictionary)
+        if status == errSecSuccess { return }
+        if status == errSecItemNotFound {
+            var add = query
+            add[kSecValueData as String] = data
+            try check(SecItemAdd(add as CFDictionary, nil))
+            return
+        }
+        try check(status)
+    }
+
+    public func delete(account: String) throws {
+        let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
+        if status != errSecItemNotFound { try check(status) }
+    }
+
+    private func baseQuery(account: String) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+    }
+
+    private func check(_ status: OSStatus) throws {
+        guard status == errSecSuccess else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status))
+        }
     }
 }
 
@@ -79,6 +144,9 @@ public struct AppConfig: Codable, Sendable {
     public var voiceCommandsEnabled: Bool
     /// Show live transcription text in the overlay while speaking (off by default).
     public var showLivePreview: Bool
+    /// Per-LLM-stage latency budget in seconds (GOALS B1 runtime gate). Polish degrades to the raw
+    /// (dictionary-corrected) transcript on timeout; Translate reports a timeout. 0 = no budget.
+    public var llmTimeoutSeconds: Double
     /// Capture from the built-in mic even when a Bluetooth headset is connected, so opening the mic
     /// doesn't force AirPods from hi-fi A2DP down to muffled narrowband HFP. Off by default (uses the
     /// system input you'd expect); opt in to avoid any playback degradation while recording.
@@ -111,6 +179,7 @@ public struct AppConfig: Codable, Sendable {
         muteAudioWhileRecording: Bool = false,
         voiceCommandsEnabled: Bool = false,
         showLivePreview: Bool = false,
+        llmTimeoutSeconds: Double = 8,
         preferBuiltInMic: Bool = false,
         cloud: CloudConfig = .init(),
         userProfile: String = "",
@@ -127,6 +196,7 @@ public struct AppConfig: Codable, Sendable {
         self.muteAudioWhileRecording = muteAudioWhileRecording
         self.voiceCommandsEnabled = voiceCommandsEnabled
         self.showLivePreview = showLivePreview
+        self.llmTimeoutSeconds = llmTimeoutSeconds
         self.preferBuiltInMic = preferBuiltInMic
         self.cloud = cloud
         self.userProfile = userProfile
@@ -161,6 +231,7 @@ public struct AppConfig: Codable, Sendable {
         muteAudioWhileRecording = try c.decodeIfPresent(Bool.self, forKey: .muteAudioWhileRecording) ?? false
         voiceCommandsEnabled = try c.decodeIfPresent(Bool.self, forKey: .voiceCommandsEnabled) ?? false
         showLivePreview = try c.decodeIfPresent(Bool.self, forKey: .showLivePreview) ?? false
+        llmTimeoutSeconds = try c.decodeIfPresent(Double.self, forKey: .llmTimeoutSeconds) ?? 8
         preferBuiltInMic = try c.decodeIfPresent(Bool.self, forKey: .preferBuiltInMic) ?? false
         cloud = try c.decodeIfPresent(CloudConfig.self, forKey: .cloud) ?? .init()
         userProfile = try c.decodeIfPresent(String.self, forKey: .userProfile) ?? ""
@@ -183,9 +254,11 @@ public struct AppConfig: Codable, Sendable {
 /// Loads/saves AppConfig as JSON under ~/Library/Application Support/SaidDone/config.json.
 public struct ConfigStore: Sendable {
     public let url: URL
+    public let secrets: KeychainSecrets
 
-    public init(directory: URL) {
+    public init(directory: URL, secrets: KeychainSecrets = .init()) {
         self.url = directory.appendingPathComponent("config.json")
+        self.secrets = secrets
     }
 
     public static func defaultDirectory() throws -> URL {
@@ -199,7 +272,11 @@ public struct ConfigStore: Sendable {
     public func load() -> AppConfig {
         guard let data = try? Data(contentsOf: url) else { return .default }   // no file = fresh install
         do {
-            return try JSONDecoder().decode(AppConfig.self, from: data)
+            let decoded = try JSONDecoder().decode(AppConfig.self, from: data)
+            let hadInlineKeys = !decoded.cloud.llmKey.isEmpty || !decoded.cloud.asrKey.isEmpty
+            let hydrated = hydrateSecrets(decoded)
+            if hadInlineKeys { try? save(hydrated) }
+            return hydrated
         } catch {
             // A real config existed but couldn't be read — never silently use defaults without a trace.
             // Preserve the file (so the user's settings aren't lost) and log loudly.
@@ -210,8 +287,25 @@ public struct ConfigStore: Sendable {
     }
 
     public func save(_ config: AppConfig) throws {
+        try secrets.set(config.cloud.llmKey, account: "llmKey")
+        try secrets.set(config.cloud.asrKey, account: "asrKey")
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         try enc.encode(config).write(to: url, options: .atomic)
+    }
+
+    private func hydrateSecrets(_ config: AppConfig) -> AppConfig {
+        var config = config
+        if config.cloud.llmKey.isEmpty {
+            config.cloud.llmKey = secrets.get(account: "llmKey") ?? ""
+        } else {
+            try? secrets.set(config.cloud.llmKey, account: "llmKey")
+        }
+        if config.cloud.asrKey.isEmpty {
+            config.cloud.asrKey = secrets.get(account: "asrKey") ?? ""
+        } else {
+            try? secrets.set(config.cloud.asrKey, account: "asrKey")
+        }
+        return config
     }
 }

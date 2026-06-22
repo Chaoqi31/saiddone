@@ -25,11 +25,17 @@ public struct PipelineOrchestrator: Sendable {
     public var asr: ASRProvider
     public var llm: LLMProvider
     public var dictionary: CustomDictionary
+    /// Per-LLM-stage latency budget in seconds (GOALS B1 runtime gate). 0/nil = no budget.
+    /// On timeout, Polish degrades to the dictionary-corrected transcript (never lose the user's
+    /// words); Translate throws `latencyBudgetExceeded` (a stale source-language insert is worse).
+    public var llmTimeout: TimeInterval?
 
-    public init(asr: ASRProvider, llm: LLMProvider, dictionary: CustomDictionary = .init()) {
+    public init(asr: ASRProvider, llm: LLMProvider, dictionary: CustomDictionary = .init(),
+                llmTimeout: TimeInterval? = nil) {
         self.asr = asr
         self.llm = llm
         self.dictionary = dictionary
+        self.llmTimeout = llmTimeout
     }
 
     /// Run audio through the full pipeline for `mode`. `context` is the resolved App Profile tone.
@@ -51,18 +57,75 @@ public struct PipelineOrchestrator: Sendable {
         let final: String
         switch mode {
         case .dictation:
-            final = try await llm.polish(corrected, context: context)
+            final = try await polishWithBudget(corrected, context: context)
         case .translation(let target):
             // Polish first for clean source, then translate (ARCHITECTURE: Polish → Translate).
-            let polished = try await llm.polish(corrected, context: context)
-            final = try await llm.translate(polished, to: target, context: context)
+            let polished = try await polishWithBudget(corrected, context: context)
+            guard let translated = try await withBudget({ try await llm.translate(polished, to: target, context: context) }) else {
+                throw ProviderError.latencyBudgetExceeded
+            }
+            final = translated
         case .rewrite:
             // Rewrite Mode is handled by the app (needs the selected text); treat as polish here.
-            final = try await llm.polish(corrected, context: context)
+            final = try await polishWithBudget(corrected, context: context)
         }
 
         let elapsed = start.duration(to: clock.now).asSeconds
         return PipelineResult(text: final, rawTranscript: raw, elapsed: elapsed)
+    }
+
+    /// Polish under the latency budget: timeout → the input text as-is (degrade, don't error).
+    private func polishWithBudget(_ text: String, context: PolishContext) async throws -> String {
+        try await withBudget { try await llm.polish(text, context: context) } ?? text
+    }
+
+    /// Run `op` racing the budget. Returns nil on timeout; no budget = just run `op`.
+    /// The losing task is cancelled (providers that can't observe cancellation finish in the background).
+    private func withBudget(_ op: @escaping @Sendable () async throws -> String) async throws -> String? {
+        guard let budget = llmTimeout, budget > 0 else { return try await op() }
+        let state = BudgetRaceState()
+        return try await withCheckedThrowingContinuation { continuation in
+            let work = Task {
+                do {
+                    let value = try await op()
+                    state.finish { continuation.resume(returning: value) }
+                } catch {
+                    state.finish { continuation.resume(throwing: error) }
+                }
+            }
+            let timer = Task {
+                try? await Task.sleep(for: .seconds(budget))
+                state.finish { continuation.resume(returning: nil) }
+            }
+            state.setTasks([work, timer])
+        }
+    }
+}
+
+private final class BudgetRaceState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var finished = false
+    private var tasks: [Task<Void, Never>] = []
+
+    func setTasks(_ tasks: [Task<Void, Never>]) {
+        lock.lock()
+        if finished {
+            lock.unlock()
+            tasks.forEach { $0.cancel() }
+        } else {
+            self.tasks = tasks
+            lock.unlock()
+        }
+    }
+
+    func finish(_ resume: () -> Void) {
+        lock.lock()
+        guard !finished else { lock.unlock(); return }
+        finished = true
+        let tasks = self.tasks
+        lock.unlock()
+        tasks.forEach { $0.cancel() }
+        resume()
     }
 }
 

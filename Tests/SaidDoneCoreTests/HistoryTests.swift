@@ -32,4 +32,21 @@ final class HistoryTests: XCTestCase {
         let store = HistoryStore(directory: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString))
         XCTAssertEqual(store.recent(), [])
     }
+
+    func testClearRemovesAudioFiles() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let store = HistoryStore(directory: dir)
+        try FileManager.default.createDirectory(at: store.audioDirectory, withIntermediateDirectories: true)
+        let audioURL = store.audioURL("sample.wav")
+        try Data([1, 2, 3]).write(to: audioURL)
+        store.append(.init(date: Date(), mode: "dictation", raw: "raw", text: "text", audioFile: "sample.wav"))
+
+        store.clear()
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: audioURL.path))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.url.path))
+    }
 }

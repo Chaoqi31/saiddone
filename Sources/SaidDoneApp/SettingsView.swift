@@ -122,6 +122,18 @@ struct SettingsView: View {
                 Toggle("Record from built-in mic (keep Bluetooth audio in hi-fi)", isOn: $model.config.preferBuiltInMic)
                 Toggle("Voice commands (say “换行” / “new line” to break lines)", isOn: $model.config.voiceCommandsEnabled)
                 Toggle("Show live transcription preview while recording", isOn: $model.config.showLivePreview)
+                HStack {
+                    Text("AI step timeout")
+                    Spacer()
+                    Stepper(value: $model.config.llmTimeoutSeconds, in: 0...60, step: 1) {
+                        Text(model.config.llmTimeoutSeconds <= 0
+                             ? NSLocalizedString("Off", comment: "timeout off")
+                             : String(format: NSLocalizedString("%.0fs", comment: "timeout seconds"),
+                                      model.config.llmTimeoutSeconds))
+                            .monospacedDigit().frame(minWidth: 32, alignment: .trailing)
+                    }
+                }
+                .help("If polishing takes longer than this, insert the raw transcript instead of waiting. 0 = wait forever.")
             }
 
             Section {
@@ -131,7 +143,7 @@ struct SettingsView: View {
                     Spacer()
                 }
             } footer: {
-                Text("Export / import your full configuration as JSON. Note: this includes any cloud API keys — share the file carefully.")
+                Text("Export / import your configuration as JSON. Cloud API keys stay in Keychain and are omitted from exports.")
             }
         }
         .formStyle(.grouped)

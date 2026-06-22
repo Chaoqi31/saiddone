@@ -59,7 +59,10 @@ public struct HistoryStore: Sendable {
         return Array(entries.reversed().prefix(limit))
     }
 
-    public func clear() { try? FileManager.default.removeItem(at: url) }
+    public func clear() {
+        try? FileManager.default.removeItem(at: url)
+        try? FileManager.default.removeItem(at: audioDirectory)
+    }
 
     /// Replace one entry (rewrites the file).
     public func update(_ entry: HistoryEntry) {
