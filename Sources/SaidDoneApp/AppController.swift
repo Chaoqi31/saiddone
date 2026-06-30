@@ -212,20 +212,27 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var mainWindow: NSWindow?
 
     /// Sync the window's editor models with the latest config (dictionary/settings live in the window).
+    /// NOTE: we deliberately do NOT overwrite `configModel.config` here. The Settings editor is the
+    /// source of truth for in-progress edits; resetting it on every `openMainWindow()` (Dock click,
+    /// menu-bar "Open SaidDone…") would wipe unsaved Cloud-tab edits — see commit history for the bug.
+    /// First-window sync happens in `openMainWindow()` instead.
     private func syncWindowModels() {
         historyModel.refresh()
         dictionaryModel.entries = config.dictionary.entries
-        configModel.config = config
         setupModel.refresh()
     }
 
     @objc private func openMainWindow() {
-        syncWindowModels()
         if let win = mainWindow {
+            syncWindowModels()
             win.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
             return
         }
+        // First-time creation: prime the editor models with the current config (launch-time .env
+        // hydration, onboarding, dictionary auto-learn may have changed it since the lazy init).
+        configModel.config = config
+        syncWindowModels()
         let root = LocalizedRoot(localization: localization) {
             MainView(history: self.historyModel, dictionary: self.dictionaryModel,
                      config: self.configModel, setup: self.setupModel)
