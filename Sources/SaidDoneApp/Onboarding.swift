@@ -515,8 +515,8 @@ private struct TryItStep: View {
                 .transition(.opacity)
 
             if model.warming {
-                Label("Loading the AI model for the first time — this can take a minute. Later launches are instant.",
-                      systemImage: "hourglass")
+                Label("Loading local models into memory — about 1–2 minutes the first time after each launch. You can use other features while this runs.",
+                      systemImage: "arrow.down.circle")
                     .font(.callout).foregroundStyle(.secondary)
             }
 

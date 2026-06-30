@@ -67,10 +67,12 @@ final class SetupModel: ObservableObject {
     }
 
     func prepare() {
-        busy = true; status = NSLocalizedString("Loading models… (first run downloads, 20–60s)", comment: "setup status")
+        busy = true
+        status = NSLocalizedString("Loading models… (may take 1–2 min on first launch)", comment: "setup status")
         Task {
             await onPrepare?()
-            busy = false; status = NSLocalizedString("Ready", comment: "setup status")
+            busy = false
+            status = NSLocalizedString("Ready", comment: "setup status")
             refresh()
         }
     }

@@ -108,6 +108,12 @@ final class RecordingOverlay {
 
     func updateLevel(_ level: Float) { model.pushLevel(level) }
 
+    /// Update the mode label while recording (e.g. user switched hotkey mid-capture).
+    func updateLabel(_ label: String) {
+        model.label = label
+        announce(label)
+    }
+
     /// Update the deterministic 0…1 pipeline progress bar.
     func updateProcessing(progress: Double, stageKey: String) {
         model.processingProgress = min(1, max(0, progress))

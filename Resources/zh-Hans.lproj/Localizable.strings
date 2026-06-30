@@ -162,6 +162,11 @@
 "Download failed — check network / HuggingFace access" = "下载失败 — 请检查网络 / HuggingFace 访问";
 "Loading models… (first run downloads, 20–60s)" = "正在加载模型…（首次运行需下载，20–60 秒）";
 "Preparing models…" = "正在准备模型…";
+"Loading in background — %@" = "后台加载中 — %@";
+"Speech model…" = "语音模型…";
+"AI model…" = "AI 模型…";
+"Loading models…" = "正在加载模型…";
+"Loading models… (may take 1–2 min on first launch)" = "正在加载模型…（首次启动约需 1–2 分钟）";
 "Ready" = "就绪";
 
 /* Recording overlay */

@@ -31,6 +31,8 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     /// Which Mode is currently recording, nil = idle. Toggle (ADR-0006).
     private var activeMode: Mode?
+    /// Selection captured when Ask recording starts (before ASR can take seconds).
+    private var askSelectionSnapshot: String?
 
     // Providers built from config: local ASR = WhisperKit, local LLM = MLX-Qwen (cloud if configured).
     private var asr: ASRProvider
@@ -150,7 +152,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         Permissions.accessibilityTrusted(prompt: true)
         Task {
             _ = await Permissions.requestMicrophone()
-            await prewarm()
+            // Let the window paint first — model warm-up runs in the background without blocking the app.
+            try? await Task.sleep(for: .milliseconds(800))
+            scheduleBackgroundPrewarm()
         }
         // Show the window on launch unless started as a login item (then stay in the background).
         if !config.launchAtLogin { openMainWindow() }
@@ -257,7 +261,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func finishOnboarding() {
         applyConfig(configFromOnboarding(complete: true))
         onboardingWindow?.close(); onboardingWindow = nil
-        Task { await prewarm() }
+        scheduleBackgroundPrewarm()
         openMainWindow()
     }
 
@@ -345,9 +349,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         // Status header: which engines are active, plus a warning if a chosen local model is missing.
         let engines = menuItem(engineSummary(), nil); engines.isEnabled = false
         menu.addItem(engines)
-        if isPrewarming {
-            let warming = menuItem(NSLocalizedString("Preparing models…", comment: "menu prewarm"),
-                                   nil, symbol: "hourglass")
+        if isPrewarming, let stage = prewarmStage {
+            let warming = menuItem(
+                String(format: NSLocalizedString("Loading in background — %@", comment: "menu prewarm stage"), stage),
+                nil, symbol: "arrow.down.circle")
             warming.isEnabled = false
             menu.addItem(warming)
         }
@@ -386,7 +391,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
 
         let recording = activeMode != nil
-        let name = recording ? "mic.fill" : (isWorking || isPrewarming ? "hourglass" : "mic")
+        let name = recording ? "mic.fill" : (isWorking ? "hourglass" : "mic")
         statusItem.button?.image = NSImage(systemSymbolName: name, accessibilityDescription: "SaidDone")
         statusItem.button?.contentTintColor = recording ? .systemRed : nil
         recording ? startBlink() : stopBlink()
@@ -418,27 +423,83 @@ final class AppController: NSObject, NSApplicationDelegate {
         if config.muteAudioWhileRecording { SystemAudio.setMuted(false) }
         overlay.hide()
         activeMode = nil
+        askSelectionSnapshot = nil
         slog("recording cancelled")
         refreshUI()
     }
 
     @objc private func stopAndInsert() { finishRecording() }
 
-    /// True while the launch model load runs (menu shows it; the latency budget stays off so a cold
-    /// load isn't mistaken for a hung polish).
+    /// True while local models load into memory after launch (background — app stays usable).
     private var isPrewarming = false
+    private var prewarmStage: String?
+    private var prewarmTask: Task<Void, Never>?
 
-    /// Warm the ASR model at launch so first real use isn't a 20-40s mystery wait.
+    /// Kick off a single background warm-up; safe to call from launch / Setup / onboarding.
+    private func scheduleBackgroundPrewarm() {
+        guard prewarmTask == nil else { return }
+        prewarmTask = Task { [weak self] in
+            await self?.prewarm()
+            self?.prewarmTask = nil
+        }
+    }
+
+    /// Warm local models into memory so the first dictation isn't a mystery wait. Cloud engines skip.
+    /// Runs in the background with per-stage timeouts so a slow load never blocks the app forever.
     func prewarm() async {
+        let needsASR = config.asr.location == .local
+        let needsLLM = config.llm.location == .local
+        guard needsASR || needsLLM else {
+            slog("prewarm skipped — cloud-only engines")
+            return
+        }
+        guard !isPrewarming else {
+            await prewarmTask?.value
+            return
+        }
+
         slog("prewarming models…")
         isPrewarming = true
+        defer { isPrewarming = false; prewarmStage = nil; refreshUI() }
         refreshUI()
-        _ = try? await asr.transcribe(AudioSamples(samples: [Float](repeating: 0, count: 1600)),
-                                      languageHint: config.asrLanguage)
-        _ = try? await llm.polish("warm up", context: .none)
-        isPrewarming = false
-        refreshUI()
+
+        if needsASR {
+            prewarmStage = NSLocalizedString("Speech model…", comment: "prewarm stage")
+            refreshUI()
+            let ok = await withTimeout(90) {
+                _ = try? await self.asr.transcribe(
+                    AudioSamples(samples: [Float](repeating: 0, count: 1600)),
+                    languageHint: self.config.asrLanguage)
+            }
+            if !ok { slog("prewarm: speech model timed out after 90s") }
+        }
+        guard !Task.isCancelled else { return }
+
+        if needsLLM {
+            prewarmStage = NSLocalizedString("AI model…", comment: "prewarm stage")
+            refreshUI()
+            let ok = await withTimeout(120) {
+                _ = try? await self.llm.polish("warm up", context: .none)
+            }
+            if !ok { slog("prewarm: AI model timed out after 120s") }
+        }
         slog("models warm")
+    }
+
+    /// Run `operation` but give up after `seconds` (returns false on timeout).
+    private func withTimeout(_ seconds: TimeInterval,
+                             operation: @MainActor @escaping () async -> Void) async -> Bool {
+        await withCheckedContinuation { continuation in
+            let gate = PrewarmResumeGate(continuation)
+            Task { @MainActor in
+                await operation()
+                gate.resume(true)
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                gate.resume(false)
+            }
+        }
     }
 
     // MARK: Hotkeys / toggle
@@ -480,15 +541,56 @@ final class AppController: NSObject, NSApplicationDelegate {
     @objc private func toggleDictation() { toggle(.dictation) }
     @objc private func toggleTranslation() { toggle(.translation(target: config.targetLanguage)) }
 
-    private func toggle(_ mode: Mode) {
-        if activeMode == nil {
-            // Fail fast (before recording) if a chosen local model isn't downloaded — clearer than a
-            // cryptic mid-pipeline error or a silent multi-GB download.
-            if let msg = missingLocalModelMessage() { overlay.showError(msg); return }
-            startRecording(mode)
-        } else {
-            finishRecording()
+    enum RecordingToggleAction: Equatable {
+        case start(Mode)
+        case finish
+        case switchMode(Mode)
+        case ignoreBusy
+    }
+
+    /// Pure toggle decision — hotkey vs. current recording / pipeline state.
+    static func recordingToggleAction(activeMode: Mode?, isWorking: Bool, requested: Mode) -> RecordingToggleAction {
+        if isWorking { return .ignoreBusy }
+        if let current = activeMode {
+            return current == requested ? .finish : .switchMode(requested)
         }
+        return .start(requested)
+    }
+
+    private func toggle(_ mode: Mode) {
+        switch Self.recordingToggleAction(activeMode: activeMode, isWorking: isWorking, requested: mode) {
+        case .ignoreBusy:
+            slog("toggle ignored — pipeline running")
+        case .finish:
+            finishRecording()
+        case .switchMode(let newMode):
+            switchRecordingMode(to: newMode)
+        case .start(let newMode):
+            if let msg = missingLocalModelMessage() { overlay.showError(msg); return }
+            startRecording(newMode)
+        }
+    }
+
+    private static func recordingLabel(for mode: Mode) -> String {
+        switch mode {
+        case .translation: return NSLocalizedString("Translating", comment: "overlay label")
+        case .ask: return NSLocalizedString("Ask — speak your question", comment: "overlay label")
+        default: return NSLocalizedString("Recording", comment: "overlay label")
+        }
+    }
+
+    /// Switch mode mid-capture without discarding audio (different hotkey while recording).
+    private func switchRecordingMode(to mode: Mode) {
+        guard activeMode != nil else { return }
+        activeMode = mode
+        if case .ask = mode {
+            askSelectionSnapshot = InsertionService.grabSelection()
+        } else {
+            askSelectionSnapshot = nil
+        }
+        overlay.updateLabel(Self.recordingLabel(for: mode))
+        slog("recording mode switched")
+        refreshUI()
     }
 
     /// One-line summary of the active engines for the menu-bar status header.
@@ -525,19 +627,30 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     private func startRecording(_ mode: Mode) {
+        if isPrewarming {
+            Task { @MainActor in
+                overlay.show(label: NSLocalizedString("Loading models…", comment: "prewarm wait overlay"))
+                await prewarmTask?.value
+                guard activeMode == nil else { return }
+                beginCapture(mode)
+            }
+            return
+        }
+        beginCapture(mode)
+    }
+
+    private func beginCapture(_ mode: Mode) {
         capture.onLevel = { [weak self] lvl in DispatchQueue.main.async { self?.overlay.updateLevel(lvl) } }
         capture.preferBuiltInMic = config.preferBuiltInMic
         do {
             try capture.start()
             activeMode = mode
-            let label: String = {
-                switch mode {
-                case .translation: return NSLocalizedString("Translating", comment: "overlay label")
-                case .ask: return NSLocalizedString("Ask — speak your question", comment: "overlay label")
-                default: return NSLocalizedString("Recording", comment: "overlay label")
-                }
-            }()
-            overlay.show(label: label)
+            if case .ask = mode {
+                askSelectionSnapshot = InsertionService.grabSelection()
+            } else {
+                askSelectionSnapshot = nil
+            }
+            overlay.show(label: Self.recordingLabel(for: mode))
             if config.soundsEnabled { SoundFx.start() }
             if config.muteAudioWhileRecording { SystemAudio.setMuted(true) }
             if config.showLivePreview { startPreviewLoop() }
@@ -602,7 +715,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         slog("recording stopped, \(String(format: "%.1f", audio.duration))s audio, peakRMS=\(String(format: "%.4f", audio.peakRMS)), running pipeline…")
         refreshUI()
 
-        if audio.duration < 0.15 || audio.peakRMS < 0.0008 {
+        if audio.duration < 0.15 || audio.peakRMS < 0.0005 {
             isWorking = false
             refreshUI()
             slog("capture empty or silent — mic may be disconnected or permission denied")
@@ -660,6 +773,8 @@ final class AppController: NSObject, NSApplicationDelegate {
                 // Fast-insert draft survived even if polish/ASR path emptied — don't lose the user's words.
                 if let draft = fastBox.text?.trimmingCharacters(in: .whitespacesAndNewlines), !draft.isEmpty {
                     slog("pipeline empty but draft retained (\(draft.count) chars)")
+                    appendHistory(mode: mode, audio: audio, raw: result.rawTranscript, text: draft,
+                                  elapsed: result.elapsed, polishSkipped: true)
                     if config.soundsEnabled { SoundFx.done() }
                     overlay.showDone(NSLocalizedString("Inserted (unpolished draft)", comment: "dictation draft fallback"))
                     return
@@ -671,24 +786,12 @@ final class AppController: NSObject, NSApplicationDelegate {
                 overlay.showError(msg)
                 return
             }
-            let modeStr: String = {
-                switch mode { case .translation: return "translation"; case .ask: return "ask"; default: return "dictation" }
-            }()
-            let id = UUID()
-            var audioFile: String? = nil
-            if !audio.samples.isEmpty {
-                let name = "\(id).wav"
-                try? FileManager.default.createDirectory(at: historyStore.audioDirectory, withIntermediateDirectories: true)
-                if (try? audio.wavData().write(to: historyStore.audioURL(name))) != nil { audioFile = name }
-            }
-            historyStore.append(HistoryEntry(
-                id: id, date: Date(), mode: modeStr, raw: result.rawTranscript, text: finalText,
-                audioFile: audioFile, elapsed: result.elapsed > 0 ? result.elapsed : nil,
-                polishSkipped: result.polishSkipped ? true : nil))
-            historyModel.refresh()
+            appendHistory(mode: mode, audio: audio, raw: result.rawTranscript, text: finalText,
+                          elapsed: result.elapsed, polishSkipped: result.polishSkipped)
             if let draft = fastBox.text {
                 if finalText != draft {
-                    InsertionService.replaceViaUndo(with: finalText, autoCopy: config.autoCopyToClipboard)
+                    InsertionService.replaceViaUndo(with: finalText, replacing: draft,
+                                                    autoCopy: config.autoCopyToClipboard)
                 }
             } else {
                 InsertionService.insert(finalText, autoCopy: config.autoCopyToClipboard)
@@ -707,13 +810,50 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func runAskPipeline(audio: AudioSamples, context: PolishContext) async throws -> PipelineResult {
         overlay.updateProcessing(progress: 0.5, stageKey: "asking")
         let question = try await asr.transcribe(audio.trimmedSilence(), languageHint: config.asrLanguage)
-        let selection = InsertionService.grabSelection()
+        let selection = askSelectionSnapshot ?? ""
+        askSelectionSnapshot = nil
         let out = try await llm.ask(question, selection: selection, context: context)
         overlay.updateProcessing(progress: 1.0, stageKey: "done")
         return PipelineResult(text: out, rawTranscript: "[ask] " + question, elapsed: 0)
+    }
+
+    private func appendHistory(mode: Mode, audio: AudioSamples, raw: String, text: String,
+                               elapsed: TimeInterval, polishSkipped: Bool) {
+        let modeStr: String = {
+            switch mode { case .translation: return "translation"; case .ask: return "ask"; default: return "dictation" }
+        }()
+        let id = UUID()
+        var audioFile: String? = nil
+        if !audio.samples.isEmpty {
+            let name = "\(id).wav"
+            try? FileManager.default.createDirectory(at: historyStore.audioDirectory, withIntermediateDirectories: true)
+            if (try? audio.wavData().write(to: historyStore.audioURL(name))) != nil { audioFile = name }
+        }
+        historyStore.append(HistoryEntry(
+            id: id, date: Date(), mode: modeStr, raw: raw, text: text,
+            audioFile: audioFile, elapsed: elapsed > 0 ? elapsed : nil,
+            polishSkipped: polishSkipped ? true : nil))
+        historyModel.refresh()
     }
 }
 
 private final class FastInsertBox: @unchecked Sendable {
     var text: String?
+}
+
+/// Ensures a prewarm timeout continuation resumes at most once.
+private final class PrewarmResumeGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var resumed = false
+    private let continuation: CheckedContinuation<Bool, Never>
+
+    init(_ continuation: CheckedContinuation<Bool, Never>) { self.continuation = continuation }
+
+    func resume(_ value: Bool) {
+        lock.withLock {
+            guard !resumed else { return }
+            resumed = true
+            continuation.resume(returning: value)
+        }
+    }
 }

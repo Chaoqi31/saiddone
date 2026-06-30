@@ -30,4 +30,13 @@ final class AudioTests: XCTestCase {
         let a = AudioSamples(samples: [Float](repeating: 0, count: 1000), sampleRate: 16_000)
         XCTAssertEqual(a.trimmedSilence().samples.count, 1000)
     }
+
+    func testPeakRMSUsesWindowedMaxNotWholeBufferAverage() {
+        var s = [Float](repeating: 0, count: 16_000)      // 1s silence
+        s += [Float](repeating: 0.05, count: 800)         // 50ms quiet speech
+        s += [Float](repeating: 0, count: 16_000)
+        let peak = AudioSamples(samples: s, sampleRate: 16_000).peakRMS
+        XCTAssertGreaterThan(peak, 0.04)
+        XCTAssertLessThan(peak, 0.06)
+    }
 }

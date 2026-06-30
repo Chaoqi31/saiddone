@@ -44,4 +44,28 @@ final class PrivacyAndHotkeyTests: XCTestCase {
         config.dictationHotkey = Hotkey(mouseButton: 3)
         XCTAssertEqual(Set(AppController.duplicateHotkeyNames(config)), ["Ask Anything", "Voice Input"])
     }
+
+    func testRecordingToggleIgnoresWhilePipelineBusy() {
+        XCTAssertEqual(
+            AppController.recordingToggleAction(activeMode: nil, isWorking: true, requested: .dictation),
+            .ignoreBusy)
+    }
+
+    func testRecordingToggleFinishesSameMode() {
+        XCTAssertEqual(
+            AppController.recordingToggleAction(activeMode: .dictation, isWorking: false, requested: .dictation),
+            .finish)
+    }
+
+    func testRecordingToggleSwitchesDifferentMode() {
+        XCTAssertEqual(
+            AppController.recordingToggleAction(activeMode: .dictation, isWorking: false, requested: .ask),
+            .switchMode(.ask))
+    }
+
+    func testRecordingToggleStartsWhenIdle() {
+        XCTAssertEqual(
+            AppController.recordingToggleAction(activeMode: nil, isWorking: false, requested: .translation(target: "en")),
+            .start(.translation(target: "en")))
+    }
 }

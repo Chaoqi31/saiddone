@@ -21,12 +21,20 @@ public struct AudioSamples: Sendable {
     /// True when short enough that the B1 (≤2s) latency bar applies (GOALS: short audio ≤15s).
     public var isShortUtterance: Bool { duration <= 15 }
 
-    /// Peak RMS level (0…1) — useful to detect a silent/dead mic capture.
+    /// Peak RMS level (0…1) across 30 ms windows — detects quiet speech better than a whole-buffer average.
     public var peakRMS: Float {
-        guard !samples.isEmpty else { return 0 }
-        var sum: Float = 0
-        for s in samples { sum += s * s }
-        return sqrt(sum / Float(samples.count))
+        guard !samples.isEmpty, sampleRate > 0 else { return 0 }
+        let win = max(1, Int(sampleRate * 0.03))
+        var peak: Float = 0
+        var i = 0
+        while i < samples.count {
+            let end = min(i + win, samples.count)
+            var sum: Float = 0
+            for j in i..<end { sum += samples[j] * samples[j] }
+            peak = max(peak, sqrt(sum / Float(end - i)))
+            i += win
+        }
+        return peak
     }
 
     /// Trim leading/trailing silence (with a small pad). Whisper hallucinates subtitle outros

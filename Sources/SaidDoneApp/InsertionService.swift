@@ -40,12 +40,46 @@ enum InsertionService {
     private static func synthesizeCommandZ() { synthesizeCmd(CGKeyCode(kVK_ANSI_Z)) }
 
     /// Undo the last paste (⌘Z) and insert polished text — used after fast-insert draft.
-    static func replaceViaUndo(with text: String, autoCopy: Bool = false) {
+    /// When `replacing` is set, tries AX value suffix swap first (more reliable in some editors).
+    static func replaceViaUndo(with text: String, replacing previous: String? = nil, autoCopy: Bool = false) {
         guard !text.isEmpty else { return }
+        if let previous, !previous.isEmpty, tryReplaceSuffix(previous: previous, with: text) {
+            slog("replace: AX suffix swap ok")
+            if autoCopy {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(text, forType: .string)
+            }
+            return
+        }
         synthesizeCommandZ()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
             insert(text, autoCopy: autoCopy)
         }
+    }
+
+    /// Replace a freshly pasted suffix via Accessibility when the focused field exposes `AXValue`.
+    private static func tryReplaceSuffix(previous: String, with text: String) -> Bool {
+        guard AXIsProcessTrusted(), let element = focusedElement() else { return false }
+        guard var value = axString(element, kAXValueAttribute as CFString), value.hasSuffix(previous) else {
+            return false
+        }
+        value.replaceSubrange(value.index(value.endIndex, offsetBy: -previous.count)..., with: text)
+        return AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, value as CFTypeRef) == .success
+    }
+
+    private static func focusedElement() -> AXUIElement? {
+        let system = AXUIElementCreateSystemWide()
+        var obj: AnyObject?
+        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &obj) == .success else {
+            return nil
+        }
+        return (obj as! AXUIElement)
+    }
+
+    private static func axString(_ element: AXUIElement, _ attr: CFString) -> String? {
+        var obj: AnyObject?
+        guard AXUIElementCopyAttributeValue(element, attr, &obj) == .success else { return nil }
+        return obj as? String
     }
 
     private static func synthesizeCmd(_ key: CGKeyCode) {
