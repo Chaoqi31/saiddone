@@ -131,6 +131,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        installMainMenu()
         setupStatusItem()
         overlay.model.onFinish = { [weak self] in self?.finishRecording() }
         overlay.model.onCancel = { [weak self] in self?.cancelRecording() }
@@ -176,6 +177,29 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func setupStatusItem() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         refreshUI()
+    }
+
+    /// Install a minimal main menu. macOS SwiftUI TextFields need standard Edit-menu actions
+    /// (cut:/copy:/paste:/selectAll:) on the responder chain — without them ⌘V/⌘C/⌘A do nothing
+    /// in Settings text fields. The selectors are handled by the firstResponder automatically.
+    private func installMainMenu() {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        main.addItem(appItem)
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Quit SaidDone", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+
+        let editItem = NSMenuItem()
+        main.addItem(editItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = editMenu
+
+        NSApp.mainMenu = main
     }
 
     private func menuItem(_ title: String, _ sel: Selector?, symbol: String? = nil) -> NSMenuItem {
