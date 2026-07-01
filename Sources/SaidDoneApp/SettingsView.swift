@@ -266,7 +266,7 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section {
-                SecureField("API key", text: $model.config.cloud.llmKey)
+                RevealableAPIKeyField(label: "API key", text: $model.config.cloud.llmKey)
                 TextField("Base URL", text: $model.config.cloud.llmBaseURL)
                 TextField("Model", text: $model.config.cloud.llmModel)
             } header: {
@@ -275,7 +275,7 @@ struct SettingsView: View {
                 Text("Examples: deepseek-v4-flash or deepseek-chat @ https://api.deepseek.com · gpt-4o-mini @ OpenAI.")
             }
             Section {
-                SecureField("API key", text: $model.config.cloud.asrKey)
+                RevealableAPIKeyField(label: "API key", text: $model.config.cloud.asrKey)
                 TextField("Base URL", text: $model.config.cloud.asrBaseURL)
                 TextField("Model", text: $model.config.cloud.asrModel)
             } header: {
@@ -326,5 +326,35 @@ struct SettingsView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+/// API key row with a show/hide (eye) toggle — matches macOS Settings Form layout.
+private struct RevealableAPIKeyField: View {
+    let label: LocalizedStringKey
+    @Binding var text: String
+    @State private var revealed = false
+
+    var body: some View {
+        LabeledContent(label) {
+            HStack(spacing: 6) {
+                Group {
+                    if revealed {
+                        TextField("", text: $text)
+                    } else {
+                        SecureField("", text: $text)
+                    }
+                }
+                .multilineTextAlignment(.trailing)
+                Button { revealed.toggle() } label: {
+                    Image(systemName: revealed ? "eye.slash" : "eye")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.borderless)
+                .help(revealed
+                      ? NSLocalizedString("Hide API key", comment: "cloud key field")
+                      : NSLocalizedString("Show API key", comment: "cloud key field"))
+            }
+        }
     }
 }

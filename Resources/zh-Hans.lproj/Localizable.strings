@@ -126,6 +126,8 @@
 "Keys are saved in config.json and audio/text leaves your device. Pick Cloud for a stage in the Providers tab to use these." = "Key 保存在 config.json 中，音频/文本会离开你的设备。在“引擎”标签页将某一阶段设为“云端”即可启用。";
 "LLM — polish / translate / ask" = "大模型 — 润色 / 翻译 / 随便问";
 "API key" = "API Key";
+"Show API key" = "显示 API Key";
+"Hide API key" = "隐藏 API Key";
 "Base URL" = "Base URL";
 "ASR — speech (OpenAI-compatible)" = "ASR — 语音（OpenAI 兼容）";
 "Proxy (optional)" = "代理（可选）";
