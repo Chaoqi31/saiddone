@@ -740,7 +740,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         capture.onLevel = nil
         previewTask?.cancel(); previewTask = nil
         if config.muteAudioWhileRecording { SystemAudio.setMuted(false) }
-        overlay.showProcessing()
+        // Cloud roundtrips (ASR and/or LLM) routinely cross the 6s slow-hint threshold; the hint
+        // message should reflect that, not claim a local model load that isn't happening.
+        let cloudMode = config.asr.location == .cloud || config.llm.location == .cloud
+        overlay.showProcessing(cloudMode: cloudMode)
         activeMode = nil
         isWorking = true
         slog("recording stopped, \(String(format: "%.1f", audio.duration))s audio, peakRMS=\(String(format: "%.4f", audio.peakRMS)), running pipeline…")

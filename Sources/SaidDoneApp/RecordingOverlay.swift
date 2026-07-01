@@ -11,7 +11,8 @@ final class OverlayModel: ObservableObject {
     @Published var processing = false
     @Published var processingProgress: Double = 0   // 0…1 deterministic pipeline progress
     @Published var processingStage = ""
-    @Published var slowHint = false          // shown when processing drags (first-run model load)
+    @Published var slowHint = false          // shown when processing drags (cold model load OR cloud roundtrip)
+    @Published var slowHintMessage = ""      // what to say when slowHint fires — set by showProcessing
     @Published var errorText: String?
     @Published var doneText: String?
     @Published var previewText = ""
@@ -21,7 +22,7 @@ final class OverlayModel: ObservableObject {
     func pushLevel(_ v: Float) { level = v; levels.removeFirst(); levels.append(v) }
     func reset() {
         level = 0; seconds = 0; processing = false; processingProgress = 0; processingStage = ""
-        slowHint = false; errorText = nil; doneText = nil; previewText = ""
+        slowHint = false; slowHintMessage = ""; errorText = nil; doneText = nil; previewText = ""
         levels = Array(repeating: 0, count: 30)
     }
 }
@@ -55,13 +56,18 @@ final class RecordingOverlay {
     }
 
     /// Switch to the "processing" state (keep panel up with a spinner) after the user stops.
-    func showProcessing() {
+    /// `cloudMode` picks the right slow-hint message: a cold local model load says "Loading model…",
+    /// a slow cloud roundtrip says "Cloud roundtrip…" (the 6s threshold fires normally for cloud too).
+    func showProcessing(cloudMode: Bool = false) {
         timer?.invalidate()
         model.processing = true
         model.processingProgress = 0
         model.processingStage = NSLocalizedString("Processing…", comment: "overlay processing")
         model.slowHint = false
-        // If the pipeline runs long (a cold first-run model load), say so instead of a silent spinner.
+        model.slowHintMessage = cloudMode
+            ? NSLocalizedString("Cloud processing — still working…", comment: "overlay slow cloud")
+            : NSLocalizedString("Loading model…", comment: "overlay slow")
+        // If the pipeline runs long (a cold first-run model load OR a slow cloud roundtrip), say so.
         timer = Timer.scheduledTimer(withTimeInterval: 6.0, repeats: false) { [weak self] _ in
             Task { @MainActor in if self?.model.processing == true { self?.model.slowHint = true } }
         }
@@ -201,7 +207,7 @@ private struct OverlayView: View {
                     Image(systemName: "waveform").foregroundStyle(.purple)
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.slowHint
-                             ? NSLocalizedString("Loading model…", comment: "overlay slow")
+                             ? model.slowHintMessage
                              : model.processingStage)
                             .font(.system(size: 12, weight: .medium)).lineLimit(1)
                         ProgressView(value: model.processingProgress)
