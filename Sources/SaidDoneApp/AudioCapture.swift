@@ -15,6 +15,7 @@ final class AudioCapture: @unchecked Sendable {
     )!
     private let lock = NSLock()
     private var collected: [Float] = []
+    private var envLevel: Float = 0   // envelope follower state for the live meter
     private(set) var isRecording = false
     private var configObserver: NSObjectProtocol?
 
@@ -27,7 +28,7 @@ final class AudioCapture: @unchecked Sendable {
 
     func start() throws {
         tearDownEngine()
-        lock.withLock { collected.removeAll(keepingCapacity: true) }
+        lock.withLock { collected.removeAll(keepingCapacity: true); envLevel = 0 }
 
         let engine = AVAudioEngine()
         self.engine = engine
@@ -72,7 +73,8 @@ final class AudioCapture: @unchecked Sendable {
         }
         converter = AVAudioConverter(from: inputFormat, to: targetFormat)
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 4096, format: inputFormat) { [weak self] buffer, _ in
+        // Smaller tap → ~40 ms callbacks at 48 kHz so the live meter tracks speech, not stale peaks.
+        input.installTap(onBus: 0, bufferSize: 2048, format: inputFormat) { [weak self] buffer, _ in
             self?.append(buffer)
         }
     }
@@ -126,9 +128,16 @@ final class AudioCapture: @unchecked Sendable {
         lock.withLock { collected.append(contentsOf: slice) }
 
         if let onLevel {
+            // RMS over the whole buffer (~40 ms), then a one-pole envelope follower:
+            // near-instant attack so speech shows immediately, ~180 ms release so bars
+            // hold between syllables instead of flickering on every zero-crossing.
             var sum: Float = 0
-            for v in slice { sum += v * v }
-            onLevel(min(1, sqrt(sum / Float(frames)) * 4))
+            for j in 0..<frames { sum += slice[j] * slice[j] }
+            let rms = sqrt(sum / Float(frames))
+            let dt = Float(frames) / Float(targetFormat.sampleRate)
+            let coef = rms > envLevel ? 1.0 : 1.0 - expf(-dt / 0.18)
+            envLevel = envLevel + (rms - envLevel) * coef
+            onLevel(min(1, envLevel * 6))
         }
     }
 }

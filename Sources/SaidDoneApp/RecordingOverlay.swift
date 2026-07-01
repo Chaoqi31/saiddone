@@ -19,8 +19,39 @@ final class OverlayModel: ObservableObject {
     var onFinish: (() -> Void)?
     var onCancel: (() -> Void)?
 
-    func pushLevel(_ v: Float) { level = v; levels.removeFirst(); levels.append(v) }
+    private var meterNoiseFloor: Float?
+    private var meterCalibrating: [Float] = []
+
+    /// Map mic level to 0…1. `floor` comes from a short ambient calibration at record start.
+    static func visualLevel(_ raw: Float, floor: Float) -> Float {
+        guard raw > floor else { return 0 }
+        let normalized = min(1, (raw - floor) / max(0.08, 0.48 - floor))
+        return sqrt(normalized)
+    }
+
+    func pushLevel(_ v: Float) {
+        // First ~10 buffers (~400 ms): learn ambient floor. Use the MINIMUM envelope value
+        // so speaking during calibration (peaks with quiet valleys between) doesn't inflate
+        // the floor and gate out all later speech.
+        if meterNoiseFloor == nil {
+            meterCalibrating.append(v)
+            levels.removeFirst()
+            levels.append(0)
+            if meterCalibrating.count >= 10 {
+                let lo = meterCalibrating.min() ?? 0
+                meterNoiseFloor = max(0.025, lo * 1.6)
+            }
+            return
+        }
+        // Envelope follower already smoothed the signal; just gate + map + push.
+        let bar = Self.visualLevel(v, floor: meterNoiseFloor!)
+        level = bar
+        levels.removeFirst()
+        levels.append(bar)
+    }
     func reset() {
+        meterNoiseFloor = nil
+        meterCalibrating = []
         level = 0; seconds = 0; processing = false; processingProgress = 0; processingStage = ""
         slowHint = false; slowHintMessage = ""; errorText = nil; doneText = nil; previewText = ""
         levels = Array(repeating: 0, count: 30)
@@ -222,7 +253,7 @@ private struct OverlayView: View {
                     Circle().fill(.red).frame(width: 8, height: 8)
                         .opacity(model.seconds % 2 == 0 ? 1 : 0.35)
                     if model.previewText.isEmpty {
-                        waveform.frame(width: 96, height: 22)
+                        waveform.frame(width: 112, height: 28)
                     } else {
                         Text(model.previewText).font(.system(size: 11)).lineLimit(2)
                             .truncationMode(.head)
@@ -253,12 +284,13 @@ private struct OverlayView: View {
             let w = max(1, (geo.size.width - CGFloat(n - 1) * 2) / CGFloat(n))
             HStack(alignment: .center, spacing: 2) {
                 ForEach(0..<n, id: \.self) { i in
+                    let h = CGFloat(model.levels[i])
                     Capsule().fill(.red.gradient)
-                        .frame(width: w, height: max(2, CGFloat(model.levels[i]) * geo.size.height))
+                        .frame(width: w, height: max(2, h * geo.size.height))
                 }
             }
             .frame(maxHeight: .infinity, alignment: .center)
-            .animation(.easeOut(duration: 0.12), value: model.levels)
+            .animation(.easeOut(duration: 0.09), value: model.levels)
         }
     }
 }
