@@ -480,8 +480,13 @@ final class AppController: NSObject, NSApplicationDelegate {
     func prewarm() async {
         let needsASR = config.asr.location == .local
         let needsLLM = config.llm.location == .local
+        let usesCloud = config.asr.location == .cloud || config.llm.location == .cloud
+
+        if usesCloud {
+            await ProviderFactory.warmCloud(config)
+        }
         guard needsASR || needsLLM else {
-            slog("prewarm skipped — cloud-only engines")
+            slog(usesCloud ? "cloud connections warm" : "prewarm skipped — cloud-only engines")
             return
         }
         guard !isPrewarming else {
@@ -778,11 +783,13 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func runPipeline(mode: Mode, audio: AudioSamples, orch: PipelineOrchestrator,
                              context: PolishContext) async {
         defer { isWorking = false; refreshUI() }
+        let pipelineStart = Date()
         do {
             var result: PipelineResult
             let fastBox = FastInsertBox()
             if case .ask = mode {
                 result = try await runAskPipeline(audio: audio, context: context)
+                result.elapsed = Date().timeIntervalSince(pipelineStart)
             } else {
                 let useFast = config.fastInsertBeforePolish
                     && { if case .dictation = mode { return true }; return false }()
@@ -795,6 +802,7 @@ final class AppController: NSObject, NSApplicationDelegate {
                     }
                     var finished = try await orch.finish(corrected, mode: mode, context: context)
                     finished.rawTranscript = raw
+                    finished.elapsed = Date().timeIntervalSince(pipelineStart)
                     result = finished
                 } else {
                     result = try await orch.run(audio, mode: mode, context: context, languageHint: config.asrLanguage)

@@ -18,17 +18,12 @@ public enum ProviderFactory {
 
     /// URLSession honoring an optional HTTP(S) proxy from config (helps behind restrictive networks).
     private static func session(_ cloud: CloudConfig) -> URLSession {
-        guard !cloud.proxyHost.isEmpty, cloud.proxyPort > 0 else { return .shared }
-        let c = URLSessionConfiguration.default
-        c.connectionProxyDictionary = [
-            kCFNetworkProxiesHTTPEnable as String: 1,
-            kCFNetworkProxiesHTTPProxy as String: cloud.proxyHost,
-            kCFNetworkProxiesHTTPPort as String: cloud.proxyPort,
-            kCFNetworkProxiesHTTPSEnable as String: 1,
-            kCFNetworkProxiesHTTPSProxy as String: cloud.proxyHost,
-            kCFNetworkProxiesHTTPSPort as String: cloud.proxyPort,
-        ]
-        return URLSession(configuration: c)
+        CloudSessionPool.shared.session(for: cloud)
+    }
+
+    /// Prime TLS + HTTP connections for cloud ASR/LLM so the first dictation isn't a cold start.
+    public static func warmCloud(_ config: AppConfig) async {
+        await CloudSessionPool.shared.warm(config: config)
     }
 
     public static func makeLLM(_ config: AppConfig) -> LLMProvider {

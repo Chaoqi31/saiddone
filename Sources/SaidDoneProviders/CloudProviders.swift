@@ -63,7 +63,10 @@ public struct CloudLLMProvider: LLMProvider {
     }
 
     public func polish(_ text: String, context: PolishContext) async throws -> String {
-        return try await chat(system: PolishPrompt.system(context: context), user: text)
+        // Reasoning models (e.g. deepseek-v4-flash) spend completion budget on reasoning_tokens;
+        // a tight max_tokens cap can yield empty polish → we fall back to the raw draft.
+        let cap = min(max(text.count * 4 + 768, 768), 8192)
+        return try await chat(system: PolishPrompt.system(context: context), user: text, maxTokens: cap)
     }
 
     public func translate(_ text: String, to targetLanguage: String, context: PolishContext) async throws -> String {
@@ -82,21 +85,30 @@ public struct CloudLLMProvider: LLMProvider {
         return try await chat(system: sys, user: user)
     }
 
-    private func chat(system: String, user: String) async throws -> String {
+    private func chat(system: String, user: String, maxTokens: Int? = nil) async throws -> String {
+        try await chat(system: system, user: user, maxTokens: maxTokens, thinkingEnabled: false)
+    }
+
+    private func chat(system: String, user: String, maxTokens: Int? = nil,
+                      thinkingEnabled: Bool) async throws -> String {
         guard !apiKey.isEmpty else { throw ProviderError.notConfigured("cloud LLM API key missing") }
         var req = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
         req.httpMethod = "POST"
         req.timeoutInterval = 30
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": model,
             "messages": [
                 ["role": "system", "content": system],
                 ["role": "user", "content": user],
             ],
             "temperature": 0.2,
+            // V4 models default thinking=enabled (adds latency + reasoning_tokens). Dictation polish
+            // / translate / ask don't need chain-of-thought — disable unless user picks a reasoner model.
+            "thinking": ["type": thinkingEnabled ? "enabled" : "disabled"],
         ]
+        if let maxTokens { body["max_tokens"] = maxTokens }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let data = try await CloudHTTP.send(label: "cloud LLM") { try await session.data(for: req) }
@@ -110,8 +122,8 @@ public struct CloudLLMProvider: LLMProvider {
     }
 }
 
-/// Cloud ASR via an OpenAI-compatible `/audio/transcriptions` endpoint (multipart WAV upload).
-/// Opt-in: requires a key; audio leaves the device.
+/// Cloud ASR via an OpenAI-compatible `/audio/transcriptions` endpoint (multipart upload).
+/// Opt-in: requires a key; audio leaves the device. Uploads AAC/M4A when possible (much smaller than WAV).
 public struct CloudASRProvider: ASRProvider {
     public let id: String
     public let location: ProviderLocation = .cloud
@@ -144,10 +156,13 @@ public struct CloudASRProvider: ASRProvider {
         }
         field("model", model)
         if let languageHint { field("language", languageHint) }
+        let upload = CloudAudioEncoder.uploadPayload(from: audio)
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n".data(using: .utf8)!)
-        body.append("Content-Type: audio/wav\r\n\r\n".data(using: .utf8)!)
-        body.append(audio.wavData())
+        body.append(
+            "Content-Disposition: form-data; name=\"file\"; filename=\"\(upload.filename)\"\r\n"
+                .data(using: .utf8)!)
+        body.append("Content-Type: \(upload.mimeType)\r\n\r\n".data(using: .utf8)!)
+        body.append(upload.data)
         body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
 
         let data = try await CloudHTTP.send(label: "cloud ASR") { try await session.upload(for: req, from: body) }
