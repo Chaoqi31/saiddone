@@ -109,6 +109,7 @@ final class RecordingOverlay {
         timer?.invalidate(); timer = nil
         model.processing = false
         model.errorText = nil
+        model.previewText = ""
         model.doneText = message
         let panel = self.panel ?? makePanel()
         self.panel = panel
@@ -124,6 +125,7 @@ final class RecordingOverlay {
     func showError(_ message: String) {
         timer?.invalidate(); timer = nil
         model.processing = false
+        model.previewText = ""
         model.errorText = message
         let panel = self.panel ?? makePanel()
         self.panel = panel
@@ -140,6 +142,7 @@ final class RecordingOverlay {
         model.processing = false
         model.errorText = nil
         model.doneText = nil
+        model.previewText = ""
         panel?.orderOut(nil)
     }
 
@@ -235,7 +238,11 @@ private struct OverlayView: View {
                 }
             } else if model.processing {
                 HStack(spacing: 10) {
-                    Image(systemName: "waveform").foregroundStyle(.purple)
+                    if let appIcon = NSImage(named: "AppIcon") {
+                        Image(nsImage: appIcon).resizable().scaledToFit().frame(width: 22, height: 22)
+                    } else {
+                        Image(systemName: "waveform").foregroundStyle(.purple)
+                    }
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.slowHint
                              ? model.slowHintMessage

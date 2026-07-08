@@ -41,12 +41,15 @@ final class CloudSessionPool: @unchecked Sendable {
       req.setValue("Bearer \(config.cloud.asrKey)", forHTTPHeaderField: "Authorization")
       _ = try? await session(for: config.cloud).data(for: req)
     }
-    if config.llm.location == .cloud, !config.cloud.llmKey.isEmpty,
-       let base = URL(string: config.cloud.llmBaseURL) {
+    if config.llm.location == .cloud, let base = URL(string: config.cloud.llmBaseURL) {
+      let provider = CloudProviderRegistry.builtIn.first { $0.id == config.cloud.llmProviderID }
+      let key = config.cloud.llmAPIKeys[config.cloud.llmProviderID] ?? ""
+      let needsKey = provider?.needsAPIKey ?? true
+      guard needsKey ? !key.isEmpty : true else { return }
       var req = URLRequest(url: base.appendingPathComponent("models"))
       req.httpMethod = "GET"
       req.timeoutInterval = 8
-      req.setValue("Bearer \(config.cloud.llmKey)", forHTTPHeaderField: "Authorization")
+      if needsKey { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
       _ = try? await session(for: config.cloud).data(for: req)
     }
   }

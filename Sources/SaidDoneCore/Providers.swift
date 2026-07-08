@@ -8,7 +8,7 @@ public enum ProviderLocation: String, Codable, Sendable, CaseIterable {
 
 // MARK: - ASR
 
-/// Turns captured audio into raw text. Implementations: Qwen3-ASR (MLX), WhisperKit, Cloud (ADR-0003).
+/// Turns captured audio into raw text. Implementations: WhisperKit, Cloud (ADR-0003).
 public protocol ASRProvider: Sendable {
     var id: String { get }
     var location: ProviderLocation { get }

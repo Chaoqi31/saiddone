@@ -20,4 +20,10 @@ final class PolishPromptTests: XCTestCase {
         let prompt = PolishPrompt.system(context: .none)
         XCTAssertTrue(prompt.contains("禁止输出空文本"))
     }
+
+    func testSequenceMarkersPreferNumberedList() {
+        let prompt = PolishPrompt.system(context: .none)
+        XCTAssertTrue(prompt.contains("首先/然后/再/最后"))
+        XCTAssertTrue(prompt.contains("必须输出 1. 2. 3. 4. 编号列表"))
+    }
 }

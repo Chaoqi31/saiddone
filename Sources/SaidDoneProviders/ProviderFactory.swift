@@ -33,7 +33,8 @@ public enum ProviderFactory {
             return MLXQwenLLMProvider(modelID: config.llm.modelID)
         case .cloud:
             let url = URL(string: config.cloud.llmBaseURL) ?? URL(string: "https://api.openai.com/v1")!
-            return CloudLLMProvider(apiKey: config.cloud.llmKey, baseURL: url, model: config.cloud.llmModel,
+            let key = config.cloud.llmAPIKeys[config.cloud.llmProviderID] ?? ""
+            return CloudLLMProvider(apiKey: key, baseURL: url, model: config.cloud.llmModel,
                                     session: session(config.cloud))
         }
     }

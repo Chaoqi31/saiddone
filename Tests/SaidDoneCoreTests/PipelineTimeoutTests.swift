@@ -49,15 +49,17 @@ private struct FailingLLMProvider: LLMProvider {
 final class PipelineTimeoutTests: XCTestCase {
     private let audio = AudioSamples(samples: [])
 
-    func testPolishTimeoutDegradesToCorrectedTranscript() async throws {
+    func testPolishTimeoutThrowsLatencyBudgetExceeded() async throws {
         let asr = EchoASRProvider(preset: "hello claude")
         let dict = CustomDictionary(entries: [.init(wrong: "claude", right: "Claude")])
         let orch = PipelineOrchestrator(asr: asr, llm: SlowLLMProvider(delay: .seconds(5)),
                                         dictionary: dict, llmTimeout: 0.05)
-        let result = try await orch.run(audio, mode: .dictation)
-        // Degraded output = dictionary-corrected transcript, not the (late) polish.
-        XCTAssertEqual(result.text, "hello Claude")
-        XCTAssertLessThan(result.elapsed, 2.0)
+        do {
+            _ = try await orch.run(audio, mode: .dictation)
+            XCTFail("expected latencyBudgetExceeded")
+        } catch let e as ProviderError {
+            guard case .latencyBudgetExceeded = e else { return XCTFail("wrong error: \(e)") }
+        }
     }
 
     func testPolishTimeoutDoesNotWaitForNonCooperativeProvider() async throws {
@@ -65,9 +67,12 @@ final class PipelineTimeoutTests: XCTestCase {
         let orch = PipelineOrchestrator(asr: asr, llm: BlockingLLMProvider(), llmTimeout: 0.05)
 
         let started = Date()
-        let result = try await orch.run(audio, mode: .dictation)
-
-        XCTAssertEqual(result.text, "hello")
+        do {
+            _ = try await orch.run(audio, mode: .dictation)
+            XCTFail("expected latencyBudgetExceeded")
+        } catch let e as ProviderError {
+            guard case .latencyBudgetExceeded = e else { return XCTFail("wrong error: \(e)") }
+        }
         XCTAssertLessThan(Date().timeIntervalSince(started), 0.2)
     }
 
@@ -89,8 +94,7 @@ final class PipelineTimeoutTests: XCTestCase {
 
     func testTranslateTimeoutThrowsLatencyBudgetExceeded() async throws {
         let asr = EchoASRProvider(preset: "hello")
-        // Polish fast enough is impossible here (same slow provider), so polish degrades to raw,
-        // then translate times out → latencyBudgetExceeded.
+        // Same slow provider for polish + translate: polish times out first → latencyBudgetExceeded.
         let orch = PipelineOrchestrator(asr: asr, llm: SlowLLMProvider(delay: .seconds(5)),
                                         llmTimeout: 0.05)
         do {

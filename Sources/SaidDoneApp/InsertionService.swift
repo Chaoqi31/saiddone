@@ -7,17 +7,19 @@ import Carbon.HIToolbox
 /// Requires Accessibility permission (for CGEvent posting).
 @MainActor
 enum InsertionService {
-    static func insert(_ text: String, autoCopy: Bool = false) {
-        guard !text.isEmpty else { return }
-        let trusted = AXIsProcessTrusted()
+    static func insert(_ text: String, autoCopy: Bool = false) -> Bool {
+        guard !text.isEmpty else { return true }
+        let trusted = AXIsProcessTrustedWithOptions([
+            "AXTrustedCheckOptionPrompt": true
+        ] as CFDictionary)
         let front = NSWorkspace.shared.frontmostApplication?.localizedName ?? "?"
         slog("insert: trusted=\(trusted), front=\(front), len=\(text.count)")
         guard trusted else {
-            slog("insert: NOT trusted — paste will be dropped. Grant Accessibility to this build.")
+            slog("insert: NOT trusted — copied text to clipboard. Grant Accessibility to this build.")
             // Leave the text on the clipboard so the user can ⌘V manually as a fallback.
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
-            return
+            return false
         }
 
         let pasteboard = NSPasteboard.general
@@ -30,10 +32,11 @@ enum InsertionService {
 
         // Restore after the paste is delivered (longer delay avoids racing the paste).
         // autoCopy = leave the inserted text on the clipboard instead of restoring.
-        guard !autoCopy else { return }
+        guard !autoCopy else { return true }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
             saved.restore(to: pasteboard)
         }
+        return true
     }
 
     private static func synthesizeCommandV() { synthesizeCmd(CGKeyCode(kVK_ANSI_V)) }
@@ -41,30 +44,57 @@ enum InsertionService {
 
     /// Undo the last paste (⌘Z) and insert polished text — used after fast-insert draft.
     /// When `replacing` is set, tries AX value suffix swap first (more reliable in some editors).
-    static func replaceViaUndo(with text: String, replacing previous: String? = nil, autoCopy: Bool = false) {
-        guard !text.isEmpty else { return }
+    static func replaceViaUndo(with text: String, replacing previous: String? = nil, autoCopy: Bool = false) -> Bool {
+        guard !text.isEmpty else { return true }
+        guard AXIsProcessTrusted() else {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+            slog("replace: NOT trusted — copied text to clipboard")
+            return false
+        }
         if let previous, !previous.isEmpty, tryReplaceSuffix(previous: previous, with: text) {
             slog("replace: AX suffix swap ok")
             if autoCopy {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(text, forType: .string)
             }
-            return
+            return true
         }
         synthesizeCommandZ()
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
-            insert(text, autoCopy: autoCopy)
+            _ = insert(text, autoCopy: autoCopy)
         }
+        return true
     }
 
     /// Replace a freshly pasted suffix via Accessibility when the focused field exposes `AXValue`.
+    /// Uses selection-based replacement (select the old suffix, set selected text) so the caret lands
+    /// at the end of the inserted text — setting AXValue directly resets the caret to 0 in many apps.
     private static func tryReplaceSuffix(previous: String, with text: String) -> Bool {
         guard AXIsProcessTrusted(), let element = focusedElement() else { return false }
-        guard var value = axString(element, kAXValueAttribute as CFString), value.hasSuffix(previous) else {
+        guard let value = axString(element, kAXValueAttribute as CFString), value.hasSuffix(previous) else {
             return false
         }
-        value.replaceSubrange(value.index(value.endIndex, offsetBy: -previous.count)..., with: text)
-        return AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, value as CFTypeRef) == .success
+        let draftStart = value.count - previous.count
+        // Preferred: select the previous suffix, then replace just the selection. The caret ends up
+        // at the end of the newly inserted text with no whole-value reset.
+        var sel = CFRange(location: draftStart, length: previous.count)
+        if let axRange = AXValueCreate(.cfRange, &sel),
+           AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, axRange) == .success,
+           AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFTypeRef) == .success {
+            return true
+        }
+        // Fallback: rewrite the whole value, then move the caret to the end best-effort.
+        var newValue = value
+        newValue.replaceSubrange(newValue.index(newValue.endIndex, offsetBy: -previous.count)..., with: text)
+        guard AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, newValue as CFTypeRef) == .success else {
+            return false
+        }
+        var endRange = CFRange(location: newValue.count, length: 0)
+        if let axEnd = AXValueCreate(.cfRange, &endRange) {
+            AXUIElementSetAttributeValue(element, kAXSelectedTextRangeAttribute as CFString, axEnd)
+        }
+        return true
     }
 
     private static func focusedElement() -> AXUIElement? {

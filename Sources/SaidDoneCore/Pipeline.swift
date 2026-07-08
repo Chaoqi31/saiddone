@@ -98,10 +98,12 @@ public struct PipelineOrchestrator: Sendable {
         return result
     }
 
-    /// Polish under the latency budget: timeout → the input text as-is (degrade, don't error).
+    /// Polish under the latency budget: timeout is a hard error, never silently fall back to the
+    /// unpolished transcript — the user explicitly wants polished output or a visible failure.
     private func polishWithBudget(_ text: String, context: PolishContext) async throws -> String {
-        let polished = try await withBudget { try await llm.polish(text, context: context) } ?? text
-        // Empty cloud response → keep the dictionary-corrected transcript.
+        guard let polished = try await withBudget({ try await llm.polish(text, context: context) }) else {
+            throw ProviderError.latencyBudgetExceeded
+        }
         return polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : polished
     }
 

@@ -4,7 +4,7 @@
 
 # SaidDone
 
-**Local-first voice-to-text for macOS.**
+**AI voice-to-text for macOS — cloud-quality by default, fully local when you want it.**
 
 Press a hotkey, speak, and polished text lands at your cursor — in any app.
 
@@ -28,7 +28,7 @@ Press a hotkey, speak, and polished text lands at your cursor — in any app.
 ---
 
 > [!NOTE]
-> An open-source alternative to paid cloud dictation tools (Typeless, Wispr Flow). SaidDone runs **fully on-device by default** — your audio and text never leave your Mac, no API key required. Add a cloud LLM (DeepSeek or any OpenAI-compatible endpoint) when you want top-quality polishing and translation.
+> An open-source alternative to paid cloud dictation tools (Typeless, Wispr Flow). Setup Assistant defaults to a cloud provider (DeepSeek or any OpenAI-compatible endpoint) for the most reliable transcription and polish. Switch any stage to fully on-device in Settings — your audio and text never leave your Mac, no API key required, works offline. Typeless has no equivalent to that path at all.
 
 ## Features
 
@@ -91,21 +91,9 @@ swift build && swift test     # build + run 53 unit tests
 
 ASR and LLM are independent — pick local or cloud for each in **Settings → Providers**. Whatever you select is exactly what runs (no silent fallback).
 
-### On-device (default, offline)
+### Cloud (default, most reliable)
 
-| Stage | Engine | Notes |
-|---|---|---|
-| **Speech → text** | WhisperKit `large-v3-turbo` | Downloads once; runs fully offline after. Set your primary language for best zh-en mixing. |
-| **Polish / translate** | MLX **Qwen3** (`0.6B` / `1.7B` / `4B` / `8B` 4-bit, default **4B**) | Always an AI model, never plain rules. Bigger → better Chinese and structuring. |
-
-First all-local run downloads **~3.8 GB once** (Whisper turbo ~1.5 GB + Qwen3-4B ~2.3 GB). Models live in `~/Documents/huggingface/models/`.
-
-> [!TIP]
-> On a mainland-China network, enable the **hf-mirror.com** mirror in the Setup Assistant if downloads stall.
-
-### Cloud (optional, best quality)
-
-Add an OpenAI-compatible key in **Settings → Cloud** (stored in Keychain), then set the provider's location to **Cloud**.
+Pick a provider and add its key in **Settings → Cloud** (stored in Keychain), then set the stage's location to **Cloud**. 11 built-in OpenAI-compatible providers ship in the picker (DeepSeek, OpenAI, Moonshot, Zhipu, SiliconFlow, Groq, Cerebras, xAI, OpenRouter, Ollama, LM Studio), plus custom endpoints.
 
 | Provider | Base URL | Example model |
 |---|---|---|
@@ -113,8 +101,17 @@ Add an OpenAI-compatible key in **Settings → Cloud** (stored in Keychain), the
 | **OpenAI** | `https://api.openai.com/v1` | `gpt-4o-mini` / `gpt-4o-transcribe` |
 | Any OpenAI-compatible | your endpoint | your model |
 
+### On-device (optional, offline, zero-key)
+
+| Stage | Engine | Notes |
+|---|---|---|
+| **Speech → text** | WhisperKit `large-v3-turbo` | Downloads once; runs fully offline after. Set your primary language for best zh-en mixing. |
+| **Polish / translate** | MLX **Qwen3** (`0.6B` / `1.7B` / `4B` / `8B` 4-bit, default **4B**) | Always an AI model, never plain rules. Bigger → better Chinese and structuring. |
+
+First all-local run downloads **~3.8 GB once** (Whisper turbo ~1.5 GB + Qwen3-4B ~2.3 GB). Models live in `~/Documents/huggingface/models/`. On-device models are smaller and can mishear technical terms or mixed-language speech more often than cloud — see [ADR-0007](docs/adr/0007-cloud-default-local-optional.md).
+
 > [!TIP]
-> Best daily setup for Chinese users: **local WhisperKit ASR** (offline, fast) + **cloud DeepSeek** for polish/translate.
+> On a mainland-China network, enable the **hf-mirror.com** mirror in the Setup Assistant if downloads stall.
 
 ## How it works
 

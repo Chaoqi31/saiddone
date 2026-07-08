@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Package the built executable into a runnable menu-bar SaidDone.app.
-# Menu-bar app needs LSUIElement + a mic usage string + (ad-hoc) code signing for TCC grants.
+# Menu-bar app needs LSUIElement + a mic usage string + stable code signing for TCC grants.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -25,6 +25,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleDisplayName</key>      <string>SaidDone</string>
   <key>CFBundleIdentifier</key>       <string>com.saiddone.app</string>
   <key>CFBundleExecutable</key>       <string>SaidDone</string>
+  <key>CFBundleIconFile</key>         <string>AppIcon</string>
   <key>CFBundlePackageType</key>      <string>APPL</string>
   <key>CFBundleShortVersionString</key><string>0.1.0</string>
   <key>CFBundleVersion</key>          <string>1</string>
@@ -36,7 +37,14 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-# Ad-hoc sign so macOS TCC (mic / accessibility) attributes grants to a stable identity.
-codesign --force --sign - --deep "$APP" 2>/dev/null || echo "warn: codesign skipped"
+./scripts/make-icon.sh "$APP/Contents/Resources/AppIcon.icns" >/dev/null
+
+# Prefer the stable self-signed "SaidDone Dev" identity so macOS persists the Accessibility grant
+# across rebuilds (ad-hoc "-" changes identity every build and re-prompts).
+if security find-identity -v -p codesigning 2>/dev/null | grep -q "SaidDone Dev"; then
+  codesign --force --deep --sign "SaidDone Dev" "$APP"
+else
+  codesign --force --deep --sign - "$APP" 2>/dev/null || echo "warn: codesign skipped"
+fi
 
 echo "Built $APP"

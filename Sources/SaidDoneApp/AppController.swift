@@ -40,25 +40,8 @@ final class AppController: NSObject, NSApplicationDelegate {
     private let historyStore: HistoryStore
     private lazy var historyModel = HistoryModel(store: historyStore)
     private let overlay = RecordingOverlay()
-    private var previewTask: Task<Void, Never>?
     private var hotkeyWarning: String?
 
-    /// Live transcription preview while recording (opt-in). Cancelled before the final pipeline runs.
-    private func startPreviewLoop() {
-        previewTask?.cancel()
-        previewTask = Task { @MainActor in
-            while !Task.isCancelled, self.activeMode != nil {
-                try? await Task.sleep(for: .milliseconds(1500))
-                guard !Task.isCancelled, self.activeMode != nil else { break }
-                let snap = self.capture.snapshot()
-                guard snap.duration >= 0.8 else { continue }
-                if let t = try? await self.asr.transcribe(snap.trimmedSilence(), languageHint: self.config.asrLanguage),
-                   !Task.isCancelled, self.activeMode != nil {
-                    self.overlay.updatePreview(t)
-                }
-            }
-        }
-    }
     private lazy var setupModel: SetupModel = {
         let m = SetupModel()
         m.llmModelID = config.llm.modelID
@@ -137,7 +120,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         overlay.model.onCancel = { [weak self] in self?.cancelRecording() }
         historyModel.onLearnTerms = { [weak self] terms in self?.learnTerms(terms) }
         historyModel.onReinsert = { [weak self] text in
-            InsertionService.insert(text, autoCopy: self?.config.autoCopyToClipboard ?? false)
+            guard let self else { return }
+            if !InsertionService.insert(text, autoCopy: self.config.autoCopyToClipboard) {
+                self.showInsertPermissionError()
+            }
         }
         let n = registerHotkeys()
         refreshUI()
@@ -450,7 +436,6 @@ final class AppController: NSObject, NSApplicationDelegate {
         guard activeMode != nil else { return }
         _ = capture.stop()
         capture.onLevel = nil
-        previewTask?.cancel(); previewTask = nil
         if config.muteAudioWhileRecording { SystemAudio.setMuted(false) }
         overlay.hide()
         activeMode = nil
@@ -689,7 +674,6 @@ final class AppController: NSObject, NSApplicationDelegate {
             overlay.show(label: Self.recordingLabel(for: mode))
             if config.soundsEnabled { SoundFx.start() }
             if config.muteAudioWhileRecording { SystemAudio.setMuted(true) }
-            if config.showLivePreview { startPreviewLoop() }
             slog("recording started")
             refreshUI()
         } catch {
@@ -743,7 +727,6 @@ final class AppController: NSObject, NSApplicationDelegate {
         guard let mode = activeMode else { return }
         let audio = capture.stop()
         capture.onLevel = nil
-        previewTask?.cancel(); previewTask = nil
         if config.muteAudioWhileRecording { SystemAudio.setMuted(false) }
         // Cloud roundtrips (ASR and/or LLM) routinely cross the 6s slow-hint threshold; the hint
         // message should reflect that, not claim a local model load that isn't happening.
@@ -786,7 +769,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         let pipelineStart = Date()
         do {
             var result: PipelineResult
-            let fastBox = FastInsertBox()
+            var fastDraft: String?
             if case .ask = mode {
                 result = try await runAskPipeline(audio: audio, context: context)
                 result.elapsed = Date().timeIntervalSince(pipelineStart)
@@ -797,8 +780,9 @@ final class AppController: NSObject, NSApplicationDelegate {
                     let (raw, corrected) = try await orch.transcribeToDraft(audio, languageHint: config.asrLanguage)
                     let draft = config.voiceCommandsEnabled ? VoiceCommands.apply(corrected) : corrected
                     if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        InsertionService.insert(draft, autoCopy: config.autoCopyToClipboard)
-                        fastBox.text = draft
+                        if InsertionService.insert(draft, autoCopy: config.autoCopyToClipboard) {
+                            fastDraft = draft
+                        }
                     }
                     var finished = try await orch.finish(corrected, mode: mode, context: context)
                     finished.rawTranscript = raw
@@ -813,7 +797,7 @@ final class AppController: NSObject, NSApplicationDelegate {
             let trimmedFinal = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmedFinal.isEmpty else {
                 // Fast-insert draft survived even if polish/ASR path emptied — don't lose the user's words.
-                if let draft = fastBox.text?.trimmingCharacters(in: .whitespacesAndNewlines), !draft.isEmpty {
+                if let draft = fastDraft?.trimmingCharacters(in: .whitespacesAndNewlines), !draft.isEmpty {
                     slog("pipeline empty but draft retained (\(draft.count) chars)")
                     appendHistory(mode: mode, audio: audio, raw: result.rawTranscript, text: draft,
                                   elapsed: result.elapsed, polishSkipped: true)
@@ -830,13 +814,20 @@ final class AppController: NSObject, NSApplicationDelegate {
             }
             appendHistory(mode: mode, audio: audio, raw: result.rawTranscript, text: finalText,
                           elapsed: result.elapsed, polishSkipped: result.polishSkipped)
-            if let draft = fastBox.text {
+            let inserted: Bool
+            if let draft = fastDraft {
                 if finalText != draft {
-                    InsertionService.replaceViaUndo(with: finalText, replacing: draft,
-                                                    autoCopy: config.autoCopyToClipboard)
+                    inserted = InsertionService.replaceViaUndo(with: finalText, replacing: draft,
+                                                               autoCopy: config.autoCopyToClipboard)
+                } else {
+                    inserted = true
                 }
             } else {
-                InsertionService.insert(finalText, autoCopy: config.autoCopyToClipboard)
+                inserted = InsertionService.insert(finalText, autoCopy: config.autoCopyToClipboard)
+            }
+            guard inserted else {
+                showInsertPermissionError()
+                return
             }
             if config.soundsEnabled { SoundFx.done() }
             overlay.showDone(config.autoCopyToClipboard
@@ -847,6 +838,12 @@ final class AppController: NSObject, NSApplicationDelegate {
             NSSound.beep()
             overlay.showError(Self.friendlyError(error))
         }
+    }
+
+    private func showInsertPermissionError() {
+        overlay.showError(NSLocalizedString(
+            "Accessibility permission needed — text copied. Enable SaidDone in System Settings → Privacy & Security → Accessibility.",
+            comment: "insert permission error"))
     }
 
     private func runAskPipeline(audio: AudioSamples, context: PolishContext) async throws -> PipelineResult {
@@ -877,10 +874,6 @@ final class AppController: NSObject, NSApplicationDelegate {
             polishSkipped: polishSkipped ? true : nil))
         historyModel.refresh()
     }
-}
-
-private final class FastInsertBox: @unchecked Sendable {
-    var text: String?
 }
 
 /// Ensures a prewarm timeout continuation resumes at most once.

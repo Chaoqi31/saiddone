@@ -49,45 +49,63 @@ public struct ProviderSelection: Codable, Sendable, Equatable {
     }
 }
 
-/// Opt-in cloud endpoints (OpenAI-compatible). Keys are stored in Keychain, not config.json.
+/// Opt-in cloud endpoints (OpenAI-compatible). LLM keys are stored per-provider in Keychain
+/// (account `cloud-llm:{providerID}`), never in config.json.
 public struct CloudConfig: Codable, Sendable, Equatable {
-    public var llmKey: String = ""
+    /// Selected LLM provider preset id. `llmBaseURL` remains editable for compatible custom endpoints.
+    public var llmProviderID: String = "openai"
     public var llmBaseURL: String = "https://api.openai.com/v1"
     public var llmModel: String = "gpt-4o-mini"
+    /// Per-provider API keys. Runtime-only — hydrated from Keychain, never encoded to JSON.
+    /// Settings edits this map; `ConfigStore.save` writes each to `cloud-llm:{providerID}`.
+    public var llmAPIKeys: [String: String] = [:]
+
+    // ASR — single OpenAI-compatible endpoint, unchanged.
     public var asrKey: String = ""
     public var asrBaseURL: String = "https://api.openai.com/v1"
     public var asrModel: String = "gpt-4o-transcribe"
+
     /// Optional HTTP proxy for cloud calls (helps when behind a restrictive network). Empty = none.
     public var proxyHost: String = ""
     public var proxyPort: Int = 0
     public init() {}
 
     enum CodingKeys: String, CodingKey {
-        case llmKey, llmBaseURL, llmModel, asrKey, asrBaseURL, asrModel, proxyHost, proxyPort
+        case llmProviderID, llmBaseURL, llmModel
+        case asrKey, asrBaseURL, asrModel, proxyHost, proxyPort
     }
 
-    /// Lenient decode: missing keys fall back to defaults, so adding fields never breaks an existing
-    /// config.json (a strict decode here once silently reset the whole config to the local default).
+    /// Lenient decode with migration from the old single-provider shape.
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        llmKey = try c.decodeIfPresent(String.self, forKey: .llmKey) ?? ""
-        llmBaseURL = try c.decodeIfPresent(String.self, forKey: .llmBaseURL) ?? "https://api.openai.com/v1"
+        if let newID = try c.decodeIfPresent(String.self, forKey: .llmProviderID), !newID.isEmpty {
+            llmProviderID = newID
+            llmBaseURL = try c.decodeIfPresent(String.self, forKey: .llmBaseURL)
+                ?? CloudProviderRegistry.builtIn.first { $0.id == newID }?.baseURL
+                ?? "https://api.openai.com/v1"
+        } else {
+            llmBaseURL = try c.decodeIfPresent(String.self, forKey: .llmBaseURL) ?? "https://api.openai.com/v1"
+            llmProviderID = CloudProviderRegistry.builtIn.first { $0.baseURL == llmBaseURL }?.id ?? "openai"
+        }
         llmModel = try c.decodeIfPresent(String.self, forKey: .llmModel) ?? "gpt-4o-mini"
         asrKey = try c.decodeIfPresent(String.self, forKey: .asrKey) ?? ""
         asrBaseURL = try c.decodeIfPresent(String.self, forKey: .asrBaseURL) ?? "https://api.openai.com/v1"
         asrModel = try c.decodeIfPresent(String.self, forKey: .asrModel) ?? "gpt-4o-transcribe"
         proxyHost = try c.decodeIfPresent(String.self, forKey: .proxyHost) ?? ""
         proxyPort = try c.decodeIfPresent(Int.self, forKey: .proxyPort) ?? 0
+        llmAPIKeys = [:]   // always hydrated from Keychain at load
     }
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(llmProviderID, forKey: .llmProviderID)
         try c.encode(llmBaseURL, forKey: .llmBaseURL)
         try c.encode(llmModel, forKey: .llmModel)
         try c.encode(asrBaseURL, forKey: .asrBaseURL)
         try c.encode(asrModel, forKey: .asrModel)
         try c.encode(proxyHost, forKey: .proxyHost)
         try c.encode(proxyPort, forKey: .proxyPort)
+        // llmAPIKeys + asrKey intentionally NOT encoded — Keychain only.
     }
 }
 
@@ -165,8 +183,6 @@ public struct AppConfig: Codable, Sendable {
     public var muteAudioWhileRecording: Bool
     /// Honor spoken editing commands like "换行"/"newline" (off by default — can clash with normal speech).
     public var voiceCommandsEnabled: Bool
-    /// Show live transcription text in the overlay while speaking (off by default).
-    public var showLivePreview: Bool
     /// Per-LLM-stage latency budget in seconds (GOALS B1 runtime gate). Polish degrades to the raw
     /// (dictionary-corrected) transcript on timeout; Translate reports a timeout. 0 = no budget.
     public var llmTimeoutSeconds: Double
@@ -203,7 +219,6 @@ public struct AppConfig: Codable, Sendable {
         soundsEnabled: Bool = true,
         muteAudioWhileRecording: Bool = false,
         voiceCommandsEnabled: Bool = false,
-        showLivePreview: Bool = false,
         llmTimeoutSeconds: Double = 8,
         preferBuiltInMic: Bool = false,
         cloud: CloudConfig = .init(),
@@ -222,7 +237,6 @@ public struct AppConfig: Codable, Sendable {
         self.soundsEnabled = soundsEnabled
         self.muteAudioWhileRecording = muteAudioWhileRecording
         self.voiceCommandsEnabled = voiceCommandsEnabled
-        self.showLivePreview = showLivePreview
         self.llmTimeoutSeconds = llmTimeoutSeconds
         self.preferBuiltInMic = preferBuiltInMic
         self.cloud = cloud
@@ -244,7 +258,7 @@ public struct AppConfig: Codable, Sendable {
         case dictationHotkey, translationHotkey, askHotkey
         case targetLanguage, asrLanguage, asr, llm, dictionary, appProfiles
         case launchAtLogin, autoCopyToClipboard, soundsEnabled, muteAudioWhileRecording
-        case voiceCommandsEnabled, showLivePreview, llmTimeoutSeconds, preferBuiltInMic
+        case voiceCommandsEnabled, llmTimeoutSeconds, preferBuiltInMic
         case cloud, userProfile, onboardingCompleted, huggingFaceEndpoint, appLanguage
         case fastInsertBeforePolish
     }
@@ -269,7 +283,6 @@ public struct AppConfig: Codable, Sendable {
         soundsEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundsEnabled) ?? true
         muteAudioWhileRecording = try c.decodeIfPresent(Bool.self, forKey: .muteAudioWhileRecording) ?? false
         voiceCommandsEnabled = try c.decodeIfPresent(Bool.self, forKey: .voiceCommandsEnabled) ?? false
-        showLivePreview = try c.decodeIfPresent(Bool.self, forKey: .showLivePreview) ?? false
         llmTimeoutSeconds = try c.decodeIfPresent(Double.self, forKey: .llmTimeoutSeconds) ?? 8
         preferBuiltInMic = try c.decodeIfPresent(Bool.self, forKey: .preferBuiltInMic) ?? false
         cloud = try c.decodeIfPresent(CloudConfig.self, forKey: .cloud) ?? .init()
@@ -312,9 +325,12 @@ public struct ConfigStore: Sendable {
         guard let data = try? Data(contentsOf: url) else { return .default }   // no file = fresh install
         do {
             let decoded = try JSONDecoder().decode(AppConfig.self, from: data)
-            let hadInlineKeys = !decoded.cloud.llmKey.isEmpty || !decoded.cloud.asrKey.isEmpty
+            // Detect migration triggers before hydrate (hydrate deletes the legacy "llmKey" account).
+            let hadLegacyLLMKey = (secrets.get(account: "llmKey")?.isEmpty == false)
+            let hadInlineASRKey = !decoded.cloud.asrKey.isEmpty
             let hydrated = hydrateSecrets(decoded)
-            if hadInlineKeys { try? save(hydrated) }
+            // Re-save when migration occurred so the new-shape JSON lands and legacy accounts clear.
+            if hadLegacyLLMKey || hadInlineASRKey { try? save(hydrated) }
             return hydrated
         } catch {
             // A real config existed but couldn't be read — never silently use defaults without a trace.
@@ -326,7 +342,11 @@ public struct ConfigStore: Sendable {
     }
 
     public func save(_ config: AppConfig) throws {
-        try secrets.set(config.cloud.llmKey, account: "llmKey")
+        // Per-provider LLM keys → Keychain accounts `cloud-llm:{providerID}`.
+        for (providerID, key) in config.cloud.llmAPIKeys {
+            try secrets.set(key, account: "cloud-llm:\(providerID)")
+        }
+        // ASR key (single endpoint).
         try secrets.set(config.cloud.asrKey, account: "asrKey")
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -335,11 +355,19 @@ public struct ConfigStore: Sendable {
 
     private func hydrateSecrets(_ config: AppConfig) -> AppConfig {
         var config = config
-        if config.cloud.llmKey.isEmpty {
-            config.cloud.llmKey = secrets.get(account: "llmKey") ?? ""
-        } else {
-            try? secrets.set(config.cloud.llmKey, account: "llmKey")
+        let allIDs = Set(CloudProviderRegistry.builtIn.map(\.id) + [config.cloud.llmProviderID])
+        let currentID = config.cloud.llmProviderID
+        var keys: [String: String] = [:]
+        for id in allIDs { keys[id] = secrets.get(account: "cloud-llm:\(id)") ?? "" }
+        // Legacy migration: if the new account for the current provider is empty but the old
+        // single "llmKey" account has a value, adopt it and clear the legacy account.
+        if (keys[currentID]?.isEmpty ?? true), let legacy = secrets.get(account: "llmKey"), !legacy.isEmpty {
+            keys[currentID] = legacy
+            try? secrets.set(legacy, account: "cloud-llm:\(currentID)")
+            try? secrets.delete(account: "llmKey")
         }
+        config.cloud.llmAPIKeys = keys
+        // ASR key (unchanged from the pre-registry scheme).
         if config.cloud.asrKey.isEmpty {
             config.cloud.asrKey = secrets.get(account: "asrKey") ?? ""
         } else {

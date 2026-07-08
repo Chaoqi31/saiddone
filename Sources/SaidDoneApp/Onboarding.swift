@@ -19,10 +19,12 @@ final class OnboardingModel: ObservableObject {
     @Published var micGranted = false
     @Published var axGranted = false
 
-    // Engine choice (draft). Defaults = the zero-key all-local path.
-    @Published var asrLocal = true
+    // Engine choice (draft). Defaults = cloud for both stages — better accuracy and much stronger
+    // ASR-mishearing / term-correction quality than the on-device models (see ADR-0007). The
+    // all-local, zero-key path is still fully supported; users pick it explicitly on this step.
+    @Published var asrLocal = false
     @Published var asrModelID = "openai_whisper-large-v3-v20240930_turbo"
-    @Published var llmLocal = true
+    @Published var llmLocal = false
     @Published var llmModelID = "mlx-community/Qwen3-4B-4bit"
     @Published var cloud = CloudConfig()
     @Published var hfMirror = false
@@ -134,7 +136,8 @@ final class OnboardingModel: ObservableObject {
     func testCloudLLM() {
         guard let testCloud, !cloudTesting else { return }
         cloudTesting = true; cloudLLMOK = nil
-        Task { cloudLLMOK = await testCloud(cloud.llmBaseURL, cloud.llmKey); cloudTesting = false }
+        let key = cloud.llmAPIKeys[cloud.llmProviderID] ?? ""
+        Task { cloudLLMOK = await testCloud(cloud.llmBaseURL, key); cloudTesting = false }
     }
     func testCloudASR() {
         guard let testCloud, !cloudTesting else { return }
@@ -143,7 +146,8 @@ final class OnboardingModel: ObservableObject {
     }
 
     func prefillDeepSeek() {
-        cloud.llmBaseURL = "https://api.deepseek.com"
+        cloud.llmProviderID = "deepseek"
+        cloud.llmBaseURL = "https://api.deepseek.com/v1"
         cloud.llmModel = "deepseek-chat"
         cloudLLMOK = nil
     }
@@ -312,7 +316,7 @@ private struct WelcomeStep: View {
                 .font(.title3).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 8) {
                 bullet("mic.fill", "Hold a hotkey, talk, release — your words appear, cleaned up.")
-                bullet("lock.fill", "Local-first & private: runs fully on-device, or use a cloud model if you prefer.")
+                bullet("sparkles", "Cloud models by default for the best accuracy — or fully on-device, zero-key and private, if you prefer.")
                 bullet("desktopcomputer", "Requires Apple Silicon · macOS 14+.")
             }.padding(.top, 6)
             Text("This quick setup grants permissions, picks your engines, and downloads what's needed.")
@@ -367,14 +371,14 @@ private struct EnginesStep: View {
     @ObservedObject var model: OnboardingModel
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            StepHeader("Choose your engines", "Pick where each stage runs. No cloud key? Keep both Local.")
+            StepHeader("Choose your engines", "Cloud is recommended for both stages. No API key? Switch either to Local — fully offline, zero-key.")
             engineCard(
                 title: "Speech → text", symbol: "waveform",
                 isLocal: $model.asrLocal, modelID: $model.asrModelID, models: OnboardingModel.asrModels)
             engineCard(
                 title: "AI polish", symbol: "sparkles",
                 isLocal: $model.llmLocal, modelID: $model.llmModelID, models: OnboardingModel.llmModels)
-            Label("Best for daily Chinese use: Speech = Local, AI polish = Cloud (DeepSeek).",
+            Label("On-device models are smaller and can mishear technical terms or mixed-language speech more often. Cloud gives the most reliable results.",
                   systemImage: "lightbulb")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -385,8 +389,8 @@ private struct EnginesStep: View {
         VStack(alignment: .leading, spacing: 10) {
             Label(title, systemImage: symbol).font(.headline)
             Picker("", selection: isLocal) {
-                Text("Local (on-device)").tag(true)
                 Text("Cloud (API key)").tag(false)
+                Text("Local (on-device)").tag(true)
             }.pickerStyle(.segmented).labelsHidden()
             if isLocal.wrappedValue {
                 Picker("Model", selection: modelID) {
@@ -421,9 +425,8 @@ private struct ProvisionStep: View {
                 localBlock(title: "AI polish model", ready: model.llmReady, progress: model.llmProgress,
                            download: { model.downloadLLMModel() })
             } else {
-                cloudBlock(title: "AI polish (cloud)", key: $model.cloud.llmKey, baseURL: $model.cloud.llmBaseURL,
-                           cloudModel: $model.cloud.llmModel, ok: model.cloudLLMOK, test: { model.testCloudLLM() },
-                           deepSeek: { model.prefillDeepSeek() })
+                cloudLLMBlock(ok: model.cloudLLMOK, test: { model.testCloudLLM() },
+                              deepSeek: { model.prefillDeepSeek() })
             }
 
             if model.anyLocal {
@@ -486,6 +489,44 @@ private struct ProvisionStep: View {
             TextField("Base URL", text: baseURL)
             TextField("Model", text: cloudModel)
             Button("Test connection", action: test).disabled(model.cloudTesting || key.wrappedValue.isEmpty)
+        }
+        .padding(12).background(.quaternary.opacity(0.4)).clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func cloudLLMBlock(ok: Bool?, test: @escaping () -> Void,
+                               deepSeek: @escaping () -> Void) -> some View {
+        let providers = CloudProviderRegistry.builtIn
+        let current = providers.first { $0.id == model.cloud.llmProviderID } ?? CloudProviderRegistry.builtIn[0]
+        let keyBinding = Binding<String>(
+            get: { model.cloud.llmAPIKeys[model.cloud.llmProviderID] ?? "" },
+            set: { model.cloud.llmAPIKeys[model.cloud.llmProviderID] = $0 }
+        )
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label("AI polish (cloud)", systemImage: "cloud").font(.headline)
+                Spacer()
+                if let ok { Image(systemName: ok ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .foregroundStyle(ok ? .green : .red) }
+            }
+            Button("Use DeepSeek preset", action: deepSeek).controlSize(.small)
+            Picker("Provider", selection: $model.cloud.llmProviderID) {
+                ForEach(providers) { p in Text(p.displayName).tag(p.id) }
+            }
+            .onChange(of: model.cloud.llmProviderID) { newID in
+                if let p = providers.first(where: { $0.id == newID }) {
+                    model.cloud.llmBaseURL = p.baseURL
+                    if !p.defaultModels.isEmpty, !p.defaultModels.contains(model.cloud.llmModel) {
+                        model.cloud.llmModel = p.defaultModels[0]
+                    }
+                }
+            }
+            if current.needsAPIKey {
+                SecureField("API key", text: keyBinding)
+            }
+            TextField("Base URL", text: $model.cloud.llmBaseURL)
+            TextField("Model", text: $model.cloud.llmModel)
+            Button("Test connection", action: test)
+                .disabled(model.cloudTesting || (current.needsAPIKey && keyBinding.wrappedValue.isEmpty))
         }
         .padding(12).background(.quaternary.opacity(0.4)).clipShape(RoundedRectangle(cornerRadius: 10))
     }

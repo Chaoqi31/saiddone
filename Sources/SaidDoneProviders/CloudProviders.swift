@@ -104,8 +104,7 @@ public struct CloudLLMProvider: LLMProvider {
                 ["role": "user", "content": user],
             ],
             "temperature": 0.2,
-            // V4 models default thinking=enabled (adds latency + reasoning_tokens). Dictation polish
-            // / translate / ask don't need chain-of-thought — disable unless user picks a reasoner model.
+            // Thinking off for polish/translate/ask — light cleanup needs no CoT.
             "thinking": ["type": thinkingEnabled ? "enabled" : "disabled"],
         ]
         if let maxTokens { body["max_tokens"] = maxTokens }
@@ -173,4 +172,3 @@ public struct CloudASRProvider: ASRProvider {
         throw ProviderError.modelUnavailable("cloud ASR: unexpected response")
     }
 }
-

@@ -1,7 +1,7 @@
 import Foundation
 
 /// Mono PCM audio at a known sample rate, ready for an ASR Provider.
-/// ASR models (Qwen3-ASR, Whisper) expect 16 kHz mono float [-1, 1].
+/// ASR engines expect 16 kHz mono float [-1, 1].
 public struct AudioSamples: Sendable {
     public static let targetSampleRate: Double = 16_000
 

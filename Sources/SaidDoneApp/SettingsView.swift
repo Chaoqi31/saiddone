@@ -22,7 +22,7 @@ final class ConfigModel: ObservableObject {
         panel.allowedContentTypes = [.json]
         guard panel.runModal() == .OK, let url = panel.url else { return }
         var exportConfig = config
-        exportConfig.cloud.llmKey = ""
+        exportConfig.cloud.llmAPIKeys = [:]
         exportConfig.cloud.asrKey = ""
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -129,7 +129,6 @@ struct SettingsView: View {
                 Toggle("Mute system audio while recording", isOn: $model.config.muteAudioWhileRecording)
                 Toggle("Record from built-in mic (keep Bluetooth audio in hi-fi)", isOn: $model.config.preferBuiltInMic)
                 Toggle("Voice commands (say “换行” / “new line” to break lines)", isOn: $model.config.voiceCommandsEnabled)
-                Toggle("Show live transcription preview while recording", isOn: $model.config.showLivePreview)
                 Toggle("Insert draft immediately, then polish in place", isOn: $model.config.fastInsertBeforePolish)
                     .help("Shows the raw transcript right after you stop, then swaps in the polished version (⌘Z + paste). Dictation only.")
                 HStack {
@@ -143,7 +142,7 @@ struct SettingsView: View {
                             .monospacedDigit().frame(minWidth: 32, alignment: .trailing)
                     }
                 }
-                .help("If polishing takes longer than this, insert the raw transcript instead of waiting. 0 = wait forever. Cloud mode auto-extends the budget for longer speech.")
+                .help("If polishing takes longer than this, fail with a timeout error instead of inserting the raw transcript. 0 = wait forever. Cloud mode auto-extends the budget for longer speech.")
             }
 
             Section {
@@ -266,13 +265,33 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section {
-                RevealableAPIKeyField(label: "API key", text: $model.config.cloud.llmKey)
+                Picker("Provider", selection: $model.config.cloud.llmProviderID) {
+                    ForEach(allLLMProviders) { p in Text(p.displayName).tag(p.id) }
+                }
+                .onChange(of: model.config.cloud.llmProviderID) { newID in
+                    // Auto-fill a default model when switching provider, if the current model
+                    // isn't in the new provider's list (avoids sending an OpenAI model id to DeepSeek).
+                    if let p = allLLMProviders.first(where: { $0.id == newID }) {
+                        model.config.cloud.llmBaseURL = p.baseURL
+                        if !p.defaultModels.isEmpty, !p.defaultModels.contains(model.config.cloud.llmModel) {
+                            model.config.cloud.llmModel = p.defaultModels[0]
+                        }
+                    }
+                }
+                if let p = currentLLMProvider, !p.defaultModels.isEmpty {
+                    Picker("Model", selection: $model.config.cloud.llmModel) {
+                        ForEach(p.defaultModels, id: \.self) { m in Text(m).tag(m) }
+                    }
+                }
                 TextField("Base URL", text: $model.config.cloud.llmBaseURL)
-                TextField("Model", text: $model.config.cloud.llmModel)
+                TextField("Model (free text if not listed)", text: $model.config.cloud.llmModel)
+                if currentLLMProvider?.needsAPIKey != false {
+                    RevealableAPIKeyField(label: "API key", text: llmKeyBinding)
+                }
             } header: {
                 Text("LLM — polish / translate / ask")
             } footer: {
-                Text("Examples: deepseek-v4-flash or deepseek-chat @ https://api.deepseek.com · gpt-4o-mini @ OpenAI.")
+                Text("Built-in presets can be edited by changing the Base URL/model.")
             }
             Section {
                 RevealableAPIKeyField(label: "API key", text: $model.config.cloud.asrKey)
@@ -293,6 +312,20 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var allLLMProviders: [CloudProvider] {
+        CloudProviderRegistry.builtIn
+    }
+    private var currentLLMProvider: CloudProvider? {
+        allLLMProviders.first { $0.id == model.config.cloud.llmProviderID }
+    }
+    /// Two-way binding to the selected provider's API key inside the per-provider Keychain map.
+    private var llmKeyBinding: Binding<String> {
+        Binding(
+            get: { model.config.cloud.llmAPIKeys[model.config.cloud.llmProviderID] ?? "" },
+            set: { model.config.cloud.llmAPIKeys[model.config.cloud.llmProviderID] = $0 }
+        )
     }
 
     // MARK: App Profiles
