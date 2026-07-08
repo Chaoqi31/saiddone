@@ -75,7 +75,8 @@ public actor MLXQwenLLMProvider: LLMProvider {
     }
 
     public func polish(_ text: String, context: PolishContext) async throws -> String {
-        let out = try await run(instructions: PolishPrompt.system(context: context), prompt: text)
+        let out = try await run(instructions: PolishPrompt.system(context: context),
+                                prompt: PolishPrompt.user(text))
         // Guard: a small LLM sometimes collapses the whole utterance to a fragment. Rather than emit
         // garbage, fall back to the (dictionary-corrected) raw transcript — never lose the user's words.
         if !text.isEmpty, out.count < max(4, text.count / 3) { return text }
