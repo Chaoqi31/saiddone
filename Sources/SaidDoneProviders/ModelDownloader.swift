@@ -3,9 +3,8 @@ import WhisperKit
 import Hub
 import MLXLMCommon
 
-/// Downloads local models into `~/Documents/huggingface/models/<repo>/` — the location both the
-/// MLX LLM provider (`MLXQwenLLMProvider.loaded()`) and WhisperKit load from. Used by the onboarding
-/// wizard and the Setup tab.
+/// Downloads local ASR models into Application Support so macOS Documents privacy does not block
+/// WhisperKit at runtime. MLX keeps using Hub's default cache path.
 ///
 /// `endpoint` empty = `huggingface.co`; pass `"https://hf-mirror.com"` to route downloads through the
 /// China mirror (the #1 first-run failure point on mainland networks).
@@ -21,11 +20,13 @@ public enum ModelDownloader {
         endpoint: String = "",
         progress: @Sendable @escaping (Double) -> Void
     ) async throws {
+        let base = ModelStorage.whisperCanonicalBase
         if endpoint.isEmpty {
             _ = try await WhisperKit.download(variant: model,
+                                              downloadBase: base,
                                               progressCallback: { progress($0.fractionCompleted) })
         } else {
-            _ = try await WhisperKit.download(variant: model, endpoint: endpoint,
+            _ = try await WhisperKit.download(variant: model, downloadBase: base, endpoint: endpoint,
                                               progressCallback: { progress($0.fractionCompleted) })
         }
     }

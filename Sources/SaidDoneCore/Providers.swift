@@ -41,11 +41,22 @@ public protocol LLMProvider: Sendable {
     func polish(_ text: String, context: PolishContext) async throws -> String
     /// Translate into `targetLanguage` (e.g. "en", "zh"). Used by Translation Mode (GOALS A4).
     func translate(_ text: String, to targetLanguage: String, context: PolishContext) async throws -> String
+    /// Polish and translate as one semantic operation. Real adapters can complete this in one generation.
+    func polishAndTranslate(_ text: String, to targetLanguage: String,
+                            context: PolishContext) async throws -> String
     /// Ask Anything: edit/query `selection` per a spoken request, or answer when selection is empty.
     func ask(_ question: String, selection: String, context: PolishContext) async throws -> String
 }
 
 public extension LLMProvider {
+    /// Polish then translate. Real local/cloud adapters override this to perform one generation;
+    /// the default preserves compatibility for simple adapters and test doubles.
+    func polishAndTranslate(_ text: String, to targetLanguage: String,
+                            context: PolishContext) async throws -> String {
+        let polished = try await polish(text, context: context)
+        return try await translate(polished, to: targetLanguage, context: context)
+    }
+
     func ask(_ question: String, selection: String, context: PolishContext) async throws -> String {
         throw ProviderError.notConfigured("Ask Anything needs an MLX or Cloud LLM")
     }

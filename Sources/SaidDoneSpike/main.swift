@@ -49,7 +49,9 @@ for spec in specs {
     do {
         let audio = try loadAudio(path)
         let t0 = Date()
-        let r = try await orch.run(audio, mode: mode, languageHint: cfg.asrLanguage)
+        let r = try await orch.run(
+            audio, mode: mode,
+            options: PipelineOptions(languageHint: cfg.asrLanguage))
         let dt = Date().timeIntervalSince(t0)
         let name = (path as NSString).lastPathComponent
         print("### \(name)  [\(modeStr)\(modeStr == "translate" ? "->\(lang)" : "")]  \(String(format: "%.1f", audio.duration))s audio  \(String(format: "%.2f", dt))s pipe")

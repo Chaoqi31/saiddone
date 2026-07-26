@@ -34,16 +34,18 @@ final class AppController: NSObject, NSApplicationDelegate {
     /// Selection captured when Ask recording starts (before ASR can take seconds).
     private var askSelectionSnapshot: String?
 
-    // Providers built from config: local ASR = WhisperKit, local LLM = MLX-Qwen (cloud if configured).
-    private var asr: ASRProvider
-    private var llm: LLMProvider
-    private let historyStore: HistoryStore
-    private lazy var historyModel = HistoryModel(store: historyStore)
+    // Preserves warm adapters until provider-relevant config actually changes.
+    private var providerRuntime: ProviderRuntime
+    private var asr: ASRProvider { providerRuntime.asr }
+    private var llm: LLMProvider { providerRuntime.llm }
+    private let historyRepository: HistoryRepository
+    private lazy var historyModel = HistoryModel(repository: historyRepository)
     private let overlay = RecordingOverlay()
     private var hotkeyWarning: String?
 
     private lazy var setupModel: SetupModel = {
         let m = SetupModel()
+        m.asrModelID = config.asr.modelID
         m.llmModelID = config.llm.modelID
         m.useMirror = !config.huggingFaceEndpoint.isEmpty
         m.onPrepare = { [weak self] in await self?.prewarm() }
@@ -107,9 +109,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         self.configStore = store
         self.config = cfg
         self.localization = LocalizationManager(override: cfg.appLanguage)
-        self.asr = ProviderFactory.makeASR(cfg)
-        self.llm = ProviderFactory.makeLLM(cfg)
-        self.historyStore = HistoryStore(directory: dir)
+        self.providerRuntime = ProviderRuntime(config: cfg)
+        self.historyRepository = HistoryRepository(directory: dir)
         super.init()
     }
 
@@ -295,7 +296,9 @@ final class AppController: NSObject, NSApplicationDelegate {
             let orch = PipelineOrchestrator(asr: asr, llm: llm, dictionary: config.dictionary,
                                             llmTimeout: isPrewarming ? 0 : config.llmTimeoutSeconds)
             do {
-                let r = try await orch.run(audio, mode: mode, languageHint: config.asrLanguage)
+                let r = try await orch.run(
+                    audio, mode: mode,
+                    options: PipelineOptions(languageHint: config.asrLanguage))
                 onboardingModel.tryResult = r.text.isEmpty
                     ? NSLocalizedString("(no speech detected — try again)", comment: "onboarding try")
                     : r.text
@@ -349,14 +352,17 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func applyConfig(_ newConfig: AppConfig) {
         config = newConfig
         try? configStore.save(newConfig)
-        asr = ProviderFactory.makeASR(newConfig)
-        llm = ProviderFactory.makeLLM(newConfig)
+        let replacements = providerRuntime.apply(newConfig)
+        setupModel.asrModelID = newConfig.asr.modelID
         setupModel.llmModelID = newConfig.llm.modelID
         dictionaryModel.entries = newConfig.dictionary.entries
         LoginItem.apply(newConfig.launchAtLogin)
         hotkeys.unregisterAll()
         registerHotkeys()
         refreshUI()
+        if replacements != .none {
+            slog("providers replaced — ASR=\(replacements.asr) LLM=\(replacements.llm)")
+        }
     }
 
     /// Rebuild menu + icon for current state. Recording shows explicit Stop / Cancel.
@@ -633,14 +639,12 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     /// If a stage is set to a local engine whose model isn't on disk, an actionable message; else nil.
     private func missingLocalModelMessage() -> String? {
-        let root = SetupModel.modelsRoot
         if config.asr.location == .local,
-           !SetupModel.dirNonEmpty(root.appendingPathComponent("argmaxinc/whisperkit-coreml")) {
+           !ModelStorage.isWhisperReady(modelID: config.asr.modelID) {
             return NSLocalizedString("Speech model not downloaded — open Settings → Setup.", comment: "missing model")
         }
         if config.llm.location == .local {
-            let cfg = root.appendingPathComponent(config.llm.modelID).appendingPathComponent("config.json")
-            if !FileManager.default.fileExists(atPath: cfg.path) {
+            if !ModelStorage.isMLXReady(modelID: config.llm.modelID) {
                 return NSLocalizedString("AI model not downloaded — open Settings → Setup.", comment: "missing model")
             }
         }
@@ -713,7 +717,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         return NSLocalizedString("Transcription failed. Please try again.", comment: "error")
     }
 
-    /// LLM latency budget: cloud polish on long utterances needs more headroom than local MLX.
+    /// AI-operation budget: cloud generation on long utterances needs more headroom than local MLX.
     private func llmTimeoutBudget(for audio: AudioSamples) -> TimeInterval? {
         guard config.llmTimeoutSeconds > 0 else { return nil }
         var budget = config.llmTimeoutSeconds
@@ -750,6 +754,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         var context = config.appProfiles.context(bundleID: bundleID, url: nil)
         context.userProfile = config.userProfile.isEmpty ? nil : config.userProfile
         context.spokenLanguage = config.asrLanguage
+        let askSelection = askSelectionSnapshot ?? ""
+        askSelectionSnapshot = nil
 
         // No budget while models are still cold-loading — a first-launch load isn't a hung polish.
         let orch = PipelineOrchestrator(
@@ -757,52 +763,44 @@ final class AppController: NSObject, NSApplicationDelegate {
             llmTimeout: isPrewarming ? nil : llmTimeoutBudget(for: audio),
             onProgress: { [weak self] progress, stage in
                 Task { @MainActor in self?.overlay.updateProcessing(progress: progress, stageKey: stage) }
+            },
+            onDraft: { [weak self] draft in
+                await MainActor.run {
+                    guard let self else { return false }
+                    return InsertionService.insertFastDraft(
+                        draft, autoCopy: self.config.autoCopyToClipboard)
+                }
             })
-        Task { @MainActor [mode, audio, orch, context] in
-            await self.runPipeline(mode: mode, audio: audio, orch: orch, context: context)
+        let options = PipelineOptions(
+            context: context,
+            languageHint: config.asrLanguage,
+            askSelection: askSelection,
+            fastDraftEnabled: config.fastInsertBeforePolish,
+            voiceCommandsEnabled: config.voiceCommandsEnabled)
+        Task { @MainActor [mode, audio, orch, options] in
+            await self.runPipeline(mode: mode, audio: audio, orch: orch, options: options)
         }
     }
 
     private func runPipeline(mode: Mode, audio: AudioSamples, orch: PipelineOrchestrator,
-                             context: PolishContext) async {
+                             options: PipelineOptions) async {
         defer { isWorking = false; refreshUI() }
-        let pipelineStart = Date()
         do {
-            var result: PipelineResult
-            var fastDraft: String?
-            if case .ask = mode {
-                result = try await runAskPipeline(audio: audio, context: context)
-                result.elapsed = Date().timeIntervalSince(pipelineStart)
-            } else {
-                let useFast = config.fastInsertBeforePolish
-                    && { if case .dictation = mode { return true }; return false }()
-                if useFast {
-                    let (raw, corrected) = try await orch.transcribeToDraft(audio, languageHint: config.asrLanguage)
-                    let draft = config.voiceCommandsEnabled ? VoiceCommands.apply(corrected) : corrected
-                    if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        if InsertionService.insert(draft, autoCopy: config.autoCopyToClipboard) {
-                            fastDraft = draft
-                        }
-                    }
-                    var finished = try await orch.finish(corrected, mode: mode, context: context)
-                    finished.rawTranscript = raw
-                    finished.elapsed = Date().timeIntervalSince(pipelineStart)
-                    result = finished
-                } else {
-                    result = try await orch.run(audio, mode: mode, context: context, languageHint: config.asrLanguage)
-                }
-            }
+            let result = try await orch.run(audio, mode: mode, options: options)
+            let fastDraft = result.draftText
             slog("pipeline done, rawLen=\(result.rawTranscript.count), textLen=\(result.text.count), elapsed=\(String(format: "%.2f", result.elapsed))s polishSkipped=\(result.polishSkipped)")
-            let finalText = config.voiceCommandsEnabled ? VoiceCommands.apply(result.text) : result.text
+            let finalText = result.text
             let trimmedFinal = finalText.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmedFinal.isEmpty else {
-                // Fast-insert draft survived even if polish/ASR path emptied — don't lose the user's words.
-                if let draft = fastDraft?.trimmingCharacters(in: .whitespacesAndNewlines), !draft.isEmpty {
+                // Fast-insert draft survived an unpolished fallback; keep it only when the pipeline
+                // marked polish as skipped, not when the LLM intentionally cleared fillers/cancels.
+                if result.polishSkipped,
+                   let draft = fastDraft?.trimmingCharacters(in: .whitespacesAndNewlines), !draft.isEmpty {
                     slog("pipeline empty but draft retained (\(draft.count) chars)")
-                    appendHistory(mode: mode, audio: audio, raw: result.rawTranscript, text: draft,
-                                  elapsed: result.elapsed, polishSkipped: true)
                     if config.soundsEnabled { SoundFx.done() }
                     overlay.showDone(NSLocalizedString("Inserted (unpolished draft)", comment: "dictation draft fallback"))
+                    enqueueHistory(mode: mode, audio: audio, raw: result.rawTranscript, text: draft,
+                                   elapsed: result.elapsed, polishSkipped: true)
                     return
                 }
                 slog("pipeline produced empty text — rawLen=\(result.rawTranscript.count), audio=\(String(format: "%.1f", audio.duration))s")
@@ -812,12 +810,10 @@ final class AppController: NSObject, NSApplicationDelegate {
                 overlay.showError(msg)
                 return
             }
-            appendHistory(mode: mode, audio: audio, raw: result.rawTranscript, text: finalText,
-                          elapsed: result.elapsed, polishSkipped: result.polishSkipped)
             let inserted: Bool
             if let draft = fastDraft {
                 if finalText != draft {
-                    inserted = InsertionService.replaceViaUndo(with: finalText, replacing: draft,
+                    inserted = InsertionService.replaceFastDraft(with: finalText, replacing: draft,
                                                                autoCopy: config.autoCopyToClipboard)
                 } else {
                     inserted = true
@@ -826,13 +822,23 @@ final class AppController: NSObject, NSApplicationDelegate {
                 inserted = InsertionService.insert(finalText, autoCopy: config.autoCopyToClipboard)
             }
             guard inserted else {
-                showInsertPermissionError()
+                enqueueHistory(mode: mode, audio: audio, raw: result.rawTranscript, text: finalText,
+                               elapsed: result.elapsed, polishSkipped: result.polishSkipped)
+                if fastDraft != nil {
+                    overlay.showError(NSLocalizedString(
+                        "Final text copied — the draft changed before it could be safely replaced.",
+                        comment: "fast draft safe replacement fallback"))
+                } else {
+                    showInsertPermissionError()
+                }
                 return
             }
             if config.soundsEnabled { SoundFx.done() }
             overlay.showDone(config.autoCopyToClipboard
                 ? NSLocalizedString("Inserted · on clipboard", comment: "dictation done toast, auto-copy on")
                 : NSLocalizedString("Inserted", comment: "dictation done toast"))
+            enqueueHistory(mode: mode, audio: audio, raw: result.rawTranscript, text: finalText,
+                           elapsed: result.elapsed, polishSkipped: result.polishSkipped)
         } catch {
             slog("pipeline error: \(error)")
             NSSound.beep()
@@ -846,33 +852,16 @@ final class AppController: NSObject, NSApplicationDelegate {
             comment: "insert permission error"))
     }
 
-    private func runAskPipeline(audio: AudioSamples, context: PolishContext) async throws -> PipelineResult {
-        overlay.updateProcessing(progress: 0.5, stageKey: "asking")
-        let question = try await asr.transcribe(audio.trimmedSilence(), languageHint: config.asrLanguage)
-        let selection = askSelectionSnapshot ?? ""
-        askSelectionSnapshot = nil
-        let out = try await llm.ask(question, selection: selection, context: context)
-        overlay.updateProcessing(progress: 1.0, stageKey: "done")
-        return PipelineResult(text: out, rawTranscript: "[ask] " + question, elapsed: 0)
-    }
-
-    private func appendHistory(mode: Mode, audio: AudioSamples, raw: String, text: String,
-                               elapsed: TimeInterval, polishSkipped: Bool) {
+    private func enqueueHistory(mode: Mode, audio: AudioSamples, raw: String, text: String,
+                                elapsed: TimeInterval, polishSkipped: Bool) {
         let modeStr: String = {
             switch mode { case .translation: return "translation"; case .ask: return "ask"; default: return "dictation" }
         }()
-        let id = UUID()
-        var audioFile: String? = nil
-        if !audio.samples.isEmpty {
-            let name = "\(id).wav"
-            try? FileManager.default.createDirectory(at: historyStore.audioDirectory, withIntermediateDirectories: true)
-            if (try? audio.wavData().write(to: historyStore.audioURL(name))) != nil { audioFile = name }
-        }
-        historyStore.append(HistoryEntry(
-            id: id, date: Date(), mode: modeStr, raw: raw, text: text,
-            audioFile: audioFile, elapsed: elapsed > 0 ? elapsed : nil,
-            polishSkipped: polishSkipped ? true : nil))
-        historyModel.refresh()
+        let entry = HistoryEntry(
+            date: Date(), mode: modeStr, raw: raw, text: text,
+            elapsed: elapsed > 0 ? elapsed : nil,
+            polishSkipped: polishSkipped ? true : nil)
+        historyModel.persist(entry, audio: audio)
     }
 }
 

@@ -25,9 +25,8 @@ public actor MLXQwenLLMProvider: LLMProvider {
         if let container { return container }
         // Prefer a local snapshot to bypass the Hub network path (swift-transformers has a
         // CheckedContinuation crash under strict concurrency). Falls back to id-based download.
-        let hfBase = URL.documentsDirectory.appending(path: "huggingface", directoryHint: .isDirectory)
-        let base = hfBase.appending(path: "models", directoryHint: .isDirectory)
-            .appending(path: hubID, directoryHint: .isDirectory)
+        let hfBase = ModelStorage.mlxDownloadBase
+        let base = ModelStorage.mlxFolder(modelID: hubID)
         let localConfig = base.appending(path: "config.json")
         let hasLocal = FileManager.default.fileExists(atPath: localConfig.path)
         let config: ModelConfiguration = hasLocal
@@ -75,10 +74,14 @@ public actor MLXQwenLLMProvider: LLMProvider {
     }
 
     public func polish(_ text: String, context: PolishContext) async throws -> String {
-        let out = try await run(instructions: PolishPrompt.system(context: context),
-                                prompt: PolishPrompt.user(text))
+        let out = PolishOutput.normalize(try await run(instructions: PolishPrompt.system(context: context),
+                                                       prompt: PolishPrompt.user(text)),
+                                         source: text)
         // Guard: a small LLM sometimes collapses the whole utterance to a fragment. Rather than emit
         // garbage, fall back to the (dictionary-corrected) raw transcript — never lose the user's words.
+        if out.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return PolishOutput.acceptsEmpty(for: text) ? "" : text
+        }
         if !text.isEmpty, out.count < max(4, text.count / 3) { return text }
         return out
     }
@@ -87,6 +90,14 @@ public actor MLXQwenLLMProvider: LLMProvider {
         let sys = "You are a translator. Translate the user's text into \(targetLanguage). "
             + "Reply with ONLY the translation — no preamble, no explanation, no quotes, no original text."
         return try await run(instructions: sys, prompt: text)
+    }
+
+    public func polishAndTranslate(_ text: String, to targetLanguage: String,
+                                   context: PolishContext) async throws -> String {
+        try await run(
+            instructions: PolishPrompt.translationSystem(
+                targetLanguage: targetLanguage, context: context),
+            prompt: PolishPrompt.translationUser(text))
     }
 
     public func ask(_ question: String, selection: String, context: PolishContext) async throws -> String {

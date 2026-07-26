@@ -1,3 +1,22 @@
+# SaidDone v1.2.0
+
+Safer fast dictation, faster warm runs, and more reliable History persistence.
+
+## What's new in v1.2
+
+- **Safer Fast Dictation** — polished text only replaces the draft when SaidDone can verify the original app, input field, and exact draft suffix. It never sends a blind Undo; when a safe swap is impossible, the final text is copied for manual paste.
+- **Faster Translation** — polishing and translation now share one LLM operation instead of two sequential requests.
+- **Consistent three-mode pipeline** — Voice Input, Translation, and Ask Anything now share ASR cleanup, dictionary handling, progress, timeout, timing, and output normalization.
+- **More reliable History** — audio and JSONL persistence run outside the insertion hot path, mutations are serialized, writes are atomic, and entry/audio cleanup stays consistent across edit, delete, and clear.
+- **Warm provider reuse** — changing unrelated settings no longer rebuilds already-warm ASR or LLM providers.
+- **Reliable local model discovery** — WhisperKit and MLX model locations/readiness use one shared implementation, while existing Whisper downloads in the legacy location continue to work.
+- **Stronger polish behavior** — expanded handling for fillers, spoken cancellation, self-correction, prompt-like dictation, mixed Chinese/English technical terms, and empty-output safety.
+- **Expanded regression coverage** — 107 tests cover the unified pipeline, History races and failures, provider reuse, model storage, polish output, and safe fast-draft replacement. The cloud corpus remains an explicit opt-in live smoke test.
+
+## Upgrade notes
+
+No configuration migration is required. Existing local Whisper models are detected automatically.
+
 # SaidDone v1.1.0
 
 Typeless-style three modes, smarter zh-en polish, and more reliable recording.

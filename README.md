@@ -13,7 +13,7 @@ Press a hotkey, speak, and polished text lands at your cursor — in any app.
 ![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
 ![Swift](https://img.shields.io/badge/Swift-6.2-f05138?logo=swift&logoColor=white)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-required-555)
-![Tests](https://img.shields.io/badge/tests-53%2B%20passing-brightgreen)
+![Tests](https://img.shields.io/badge/tests-100%2B%20passing-brightgreen)
 
 <br />
 
@@ -37,7 +37,7 @@ Press a hotkey, speak, and polished text lands at your cursor — in any app.
 | **Voice Input** `⌃⌥D` | Speak in any app; get clean text at your cursor. |
 | **Translation** `⌃⌥T` | Speak one language; insert another. |
 | **Ask Anything** `⌃⌥A` | Select text and speak an instruction, or ask a question — like Typeless. |
-| **Private by default** | On-device WhisperKit ASR, works offline. Cloud is opt-in and per-stage. |
+| **Local/private path** | On-device WhisperKit ASR + MLX Qwen run offline after model download. Cloud is explicit and per-stage. |
 | **Faithful polishing** | Punctuation, Simplified Chinese, filler removal, **context-aware zh-en ASR fixes**, subtitle-hallucination filtering, silence trimming — cleans up what you said without rewriting or inventing. |
 | **Custom dictionary** | Fix a word once in History; it's corrected automatically next time. |
 | **Personalization** | User profile + per-app tone profiles (like ChatGPT custom instructions). |
@@ -45,7 +45,7 @@ Press a hotkey, speak, and polished text lands at your cursor — in any app.
 | **Polished UX** | Setup Assistant, bilingual UI (中文 / English), menu-bar + Dock, rebindable hotkeys (keyboard **or mouse side buttons**), recording overlay with 0→1 progress, launch-at-login, VoiceOver support. |
 | **Fast dictation** | Optional: insert the ASR draft immediately, then swap in the polished text when ready. |
 
-**v1.1 highlights:** Typeless-style three modes · smarter zh-en polish · reliable mic on route changes · polish never drops your words.
+**v1.2 highlights:** safer fast-draft replacement · faster one-pass translation · resilient History persistence · warm provider reuse.
 
 ## Shortcuts
 
@@ -76,7 +76,7 @@ See **[INSTALL.md](INSTALL.md)** for the full walkthrough.
 
 ```sh
 git clone https://github.com/Chaoqi31/saiddone && cd saiddone
-swift build && swift test     # build + run 53 unit tests
+swift build && swift test     # build + run 100+ unit tests
 ./scripts/install.sh          # build the app and install to /Applications
 ```
 
@@ -93,7 +93,7 @@ ASR and LLM are independent — pick local or cloud for each in **Settings → P
 
 ### Cloud (default, most reliable)
 
-Pick a provider and add its key in **Settings → Cloud** (stored in Keychain), then set the stage's location to **Cloud**. 11 built-in OpenAI-compatible providers ship in the picker (DeepSeek, OpenAI, Moonshot, Zhipu, SiliconFlow, Groq, Cerebras, xAI, OpenRouter, Ollama, LM Studio), plus custom endpoints.
+Pick a provider and add its key in **Settings → Cloud** (stored in Keychain), then set the stage's location to **Cloud**. 11 built-in OpenAI-compatible providers ship in the picker (DeepSeek, OpenAI, Moonshot, Zhipu, SiliconFlow, Groq, Cerebras, xAI, OpenRouter, Ollama, LM Studio), and the Base URL/model fields stay editable for compatible endpoints.
 
 | Provider | Base URL | Example model |
 |---|---|---|
@@ -122,7 +122,7 @@ hotkey (toggle) → capture audio → trim silence → ASR → custom dictionary
    → ask       ┃ Ask Anything
 ```
 
-If the LLM polish step exceeds your **AI step timeout** (Settings → General, default 8 s), SaidDone inserts the dictionary-corrected transcript instead of waiting — your words are never lost. Translation mode reports a timeout rather than inserting stale text.
+If a Mode's AI operation exceeds your **AI step timeout** (Settings → General, default 8 s), SaidDone shows a timeout instead of silently inserting stale text. With fast dictation enabled, the already-inserted ASR draft stays in place so your words are not lost.
 
 ## Architecture
 
@@ -144,8 +144,9 @@ Native Swift / SwiftUI, three targets:
 ## Development
 
 ```sh
-swift test                 # 53 unit tests (core pipeline, providers, app-layer)
-./scripts/bundle-xcode.sh  # build a runnable SaidDone.app (with MLX metallib)
+swift test                 # 100+ unit tests (core pipeline, providers, app-layer)
+./scripts/bundle.sh        # fast runnable SaidDone.app for day-to-day dev
+./scripts/bundle-xcode.sh  # full SaidDone.app with MLX metallib
 ./scripts/release.sh       # build a shareable DMG
 ./scripts/notarize.sh      # notarized DMG (needs an Apple Developer account)
 ```

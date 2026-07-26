@@ -183,8 +183,8 @@ public struct AppConfig: Codable, Sendable {
     public var muteAudioWhileRecording: Bool
     /// Honor spoken editing commands like "换行"/"newline" (off by default — can clash with normal speech).
     public var voiceCommandsEnabled: Bool
-    /// Per-LLM-stage latency budget in seconds (GOALS B1 runtime gate). Polish degrades to the raw
-    /// (dictionary-corrected) transcript on timeout; Translate reports a timeout. 0 = no budget.
+    /// Per-Mode AI-operation latency budget in seconds. Dictation, Translation, and Ask each consume
+    /// at most one such budget; ASR keeps its own Provider timeout. 0 = no budget.
     public var llmTimeoutSeconds: Double
     /// Capture from the built-in mic even when a Bluetooth headset is connected, so opening the mic
     /// doesn't force AirPods from hi-fi A2DP down to muffled narrowband HFP. Off by default (uses the

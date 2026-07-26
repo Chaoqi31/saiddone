@@ -9,13 +9,19 @@ import SaidDoneCore
 final class HistoryModel: ObservableObject {
     @Published var entries: [HistoryEntry] = []
     @Published var search = ""
-    let store: HistoryStore
+    let repository: HistoryRepository
     private var player: AVAudioPlayer?
+    private var pendingPersistenceTask: Task<Void, Never>?
+    private var clearGeneration = 0
+    private var viewRevision = 0
     /// Called with terms learned when the user edits an entry (wired to add them to the dictionary).
     var onLearnTerms: (([DictionaryEntry]) -> Void)?
     /// Re-insert a past entry at the cursor (wired to the insertion service).
     var onReinsert: ((String) -> Void)?
-    init(store: HistoryStore) { self.store = store; refresh() }
+    init(repository: HistoryRepository) {
+        self.repository = repository
+        refresh()
+    }
 
     func exportAll() {
         let panel = NSSavePanel()
@@ -31,23 +37,71 @@ final class HistoryModel: ObservableObject {
     func saveEdit(_ e: HistoryEntry, newText: String) -> [DictionaryEntry] {
         let terms = DictionaryLearning.diffTerms(old: e.text, new: newText)
         var updated = e; updated.text = newText
-        store.update(updated); refresh()
+        if let index = entries.firstIndex(where: { $0.id == e.id }) {
+            entries[index] = updated
+            viewRevision += 1
+        }
+        let persisted = updated
+        enqueuePersistence { repository in
+            if !(await repository.update(persisted)) {
+                slog("history update failed for entry \(persisted.id)")
+            }
+        }
         if !terms.isEmpty { onLearnTerms?(terms) }
         return terms
     }
-    func refresh() { entries = store.recent() }
-    func clear() { store.clear(); refresh() }
+    func refresh() {
+        let previous = pendingPersistenceTask
+        let revision = viewRevision
+        Task { @MainActor in
+            if let previous { await previous.value }
+            let loaded = await repository.recent()
+            guard revision == viewRevision else { return }
+            entries = loaded
+        }
+    }
+    func prepend(_ entry: HistoryEntry) {
+        entries.removeAll { $0.id == entry.id }
+        entries.insert(entry, at: 0)
+        if entries.count > 200 { entries.removeLast(entries.count - 200) }
+        viewRevision += 1
+    }
+    func persist(_ entry: HistoryEntry, audio: AudioSamples?) {
+        let previous = pendingPersistenceTask
+        let generation = clearGeneration
+        pendingPersistenceTask = Task { @MainActor [repository] in
+            if let previous { await previous.value }
+            guard let saved = await repository.append(entry, audio: audio) else {
+                slog("history persistence failed for entry \(entry.id)")
+                return
+            }
+            guard generation == clearGeneration else { return }
+            prepend(saved)
+        }
+    }
+    func clear() {
+        entries = []
+        clearGeneration += 1
+        viewRevision += 1
+        enqueuePersistence { repository in
+            if !(await repository.clear()) { slog("history clear failed") }
+        }
+    }
     func delete(_ e: HistoryEntry) {
-        if let u = audioURL(e) { try? FileManager.default.removeItem(at: u) }
-        store.remove(id: e.id); refresh()
+        entries.removeAll { $0.id == e.id }
+        viewRevision += 1
+        enqueuePersistence { repository in
+            if !(await repository.remove(id: e.id)) {
+                slog("history removal failed for entry \(e.id)")
+            }
+        }
     }
     var filtered: [HistoryEntry] {
         search.isEmpty ? entries : entries.filter { $0.text.localizedCaseInsensitiveContains(search) }
     }
 
     func audioURL(_ e: HistoryEntry) -> URL? {
-        guard let f = e.audioFile else { return nil }
-        let u = store.audioURL(f)
+        guard let u = repository.audioURL(e) else { return nil }
         return FileManager.default.fileExists(atPath: u.path) ? u : nil
     }
     func play(_ e: HistoryEntry) {
@@ -58,6 +112,16 @@ final class HistoryModel: ObservableObject {
     func exportAudio(_ e: HistoryEntry) {
         guard let u = audioURL(e) else { return }
         NSWorkspace.shared.activateFileViewerSelecting([u])
+    }
+
+    private func enqueuePersistence(
+        _ operation: @escaping @Sendable (HistoryRepository) async -> Void
+    ) {
+        let previous = pendingPersistenceTask
+        pendingPersistenceTask = Task { @MainActor [repository] in
+            if let previous { await previous.value }
+            await operation(repository)
+        }
     }
 }
 
@@ -302,7 +366,7 @@ private struct HomePane: View {
     }
 
     private var appVersion: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.1.0"
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "1.2.0"
     }
 
     private func permRow(_ label: LocalizedStringKey, _ pane: String) -> some View {

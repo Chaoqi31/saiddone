@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import SaidDoneCore
+import SaidDoneProviders
 
 /// First-run wizard model. Owns the *draft* engine choice and provisioning state; the actual IO
 /// (permissions, downloads, cloud test, applying config, try-it capture) is injected by AppController.
@@ -88,7 +89,10 @@ final class OnboardingModel: ObservableObject {
     var isDownloading: Bool { asrProgress != nil || llmProgress != nil }
     var working: Bool { isDownloading || cloudTesting || warming }
     var anyLocal: Bool { asrLocal || llmLocal }
-    var modelsPath: String { SetupModel.modelsRoot.path(percentEncoded: false) }
+    var modelsPath: String {
+        "Speech: \(ModelStorage.whisperCanonicalBase.path(percentEncoded: false)) · "
+            + "AI: \(ModelStorage.mlxModelsRoot.path(percentEncoded: false))"
+    }
 
     func refreshPermissions() {
         micGranted = Permissions.microphoneAuthorized()
@@ -96,9 +100,8 @@ final class OnboardingModel: ObservableObject {
     }
 
     func refreshModelReadiness() {
-        asrReady = SetupModel.dirNonEmpty(SetupModel.modelsRoot.appendingPathComponent("argmaxinc/whisperkit-coreml"))
-        let llmDir = SetupModel.modelsRoot.appendingPathComponent(llmModelID)
-        llmReady = FileManager.default.fileExists(atPath: llmDir.appendingPathComponent("config.json").path)
+        asrReady = ModelStorage.isWhisperReady(modelID: asrModelID)
+        llmReady = ModelStorage.isMLXReady(modelID: llmModelID)
     }
 
     // MARK: actions (called by the view)
@@ -153,8 +156,10 @@ final class OnboardingModel: ObservableObject {
     }
 
     func revealModelsFolder() {
-        try? FileManager.default.createDirectory(at: SetupModel.modelsRoot, withIntermediateDirectories: true)
-        NSWorkspace.shared.open(SetupModel.modelsRoot)
+        for root in [ModelStorage.whisperCanonicalBase, ModelStorage.mlxModelsRoot] {
+            try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            NSWorkspace.shared.open(root)
+        }
     }
 
     func toggleTry() { guard !warming else { return }; Task { await tryToggle?() } }

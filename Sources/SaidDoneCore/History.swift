@@ -71,48 +71,188 @@ public struct HistoryStore: Sendable {
     private static let encoder = JSONEncoder()
     private static let decoder = JSONDecoder()
 
-    public func append(_ entry: HistoryEntry) {
-        guard let data = try? Self.encoder.encode(entry) else { return }
+    @discardableResult
+    public func append(_ entry: HistoryEntry) -> Bool {
+        guard let data = try? Self.encoder.encode(entry) else { return false }
         var line = data
         line.append(0x0A) // newline
-        if let handle = try? FileHandle(forWritingTo: url) {
-            defer { try? handle.close() }
-            handle.seekToEndOfFile()
-            handle.write(line)
-        } else {
-            try? line.write(to: url)
+        do {
+            if FileManager.default.fileExists(atPath: url.path) {
+                let handle = try FileHandle(forWritingTo: url)
+                defer { try? handle.close() }
+                _ = try handle.seekToEnd()
+                try handle.write(contentsOf: line)
+            } else {
+                try line.write(to: url, options: .atomic)
+            }
+            return true
+        } catch {
+            return false
         }
     }
 
     /// Newest-first, capped at `limit`.
     public func recent(_ limit: Int = 200) -> [HistoryEntry] {
-        guard let content = try? String(contentsOf: url, encoding: .utf8) else { return [] }
-        let entries = content.split(separator: "\n").compactMap { line -> HistoryEntry? in
-            guard let data = line.data(using: .utf8) else { return nil }
-            return try? Self.decoder.decode(HistoryEntry.self, from: data)
+        guard limit > 0 else { return [] }
+        let content: Data
+        if limit == Int.max {
+            guard let all = try? Data(contentsOf: url) else { return [] }
+            content = all
+        } else {
+            guard let tail = Self.tailData(from: url, lineLimit: limit) else { return [] }
+            content = tail
         }
-        return Array(entries.reversed().prefix(limit))
+        let decoded = content.split(separator: 0x0A, omittingEmptySubsequences: true)
+            .compactMap { try? Self.decoder.decode(HistoryEntry.self, from: Data($0)) }
+        return Array(decoded.suffix(limit).reversed())
     }
 
-    public func clear() {
-        try? FileManager.default.removeItem(at: url)
-        try? FileManager.default.removeItem(at: audioDirectory)
+    /// Read only enough of the JSONL tail to satisfy `lineLimit`.
+    private static func tailData(from url: URL, lineLimit: Int, chunkSize: Int = 64 * 1024) -> Data? {
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        guard let end = try? handle.seekToEnd() else { return nil }
+        var position = end
+        var newlineCount = 0
+        var chunks: [Data] = []
+        var totalBytes = 0
+
+        while position > 0, newlineCount <= lineLimit {
+            let count = min(UInt64(chunkSize), position)
+            let chunkStart = position - count
+            do {
+                try handle.seek(toOffset: chunkStart)
+                var chunk = Data()
+                while chunk.count < Int(count) {
+                    let remaining = Int(count) - chunk.count
+                    guard let part = try handle.read(upToCount: remaining), !part.isEmpty else {
+                        return nil
+                    }
+                    chunk.append(part)
+                }
+                newlineCount += chunk.reduce(into: 0) { count, byte in
+                    if byte == 0x0A { count += 1 }
+                }
+                totalBytes += chunk.count
+                chunks.append(chunk)
+                position = chunkStart
+            } catch {
+                return nil
+            }
+        }
+
+        var data = Data(capacity: totalBytes)
+        for chunk in chunks.reversed() { data.append(chunk) }
+        return data
+    }
+
+    @discardableResult
+    public func clear() -> Bool {
+        var succeeded = true
+        for target in [url, audioDirectory]
+        where FileManager.default.fileExists(atPath: target.path) {
+            do {
+                try FileManager.default.removeItem(at: target)
+            } catch {
+                succeeded = false
+            }
+        }
+        return succeeded
     }
 
     /// Replace one entry (rewrites the file).
-    public func update(_ entry: HistoryEntry) {
+    @discardableResult
+    public func update(_ entry: HistoryEntry) -> Bool {
         let all = recent(Int.max).reversed().map { $0.id == entry.id ? entry : $0 }
-        var data = Data()
-        for e in all { if let d = try? Self.encoder.encode(e) { data.append(d); data.append(0x0A) } }
-        try? data.write(to: url)
+        return rewrite(all)
     }
 
     /// Remove one entry by id (rewrites the file).
-    public func remove(id: UUID) {
+    @discardableResult
+    public func remove(id: UUID) -> Bool {
         let kept = recent(Int.max).reversed().filter { $0.id != id }   // back to chronological
-        let lines = kept.compactMap { try? Self.encoder.encode($0) }
+        return rewrite(kept)
+    }
+
+    private func rewrite<S: Sequence>(_ entries: S) -> Bool where S.Element == HistoryEntry {
         var data = Data()
-        for line in lines { data.append(line); data.append(0x0A) }
-        try? data.write(to: url)
+        do {
+            for entry in entries {
+                data.append(try Self.encoder.encode(entry))
+                data.append(0x0A)
+            }
+            try data.write(to: url, options: .atomic)
+            return true
+        } catch {
+            return false
+        }
+    }
+}
+
+/// Serializes History entry/audio persistence away from the MainActor and keeps their lifecycle
+/// in one module.
+public actor HistoryRepository {
+    public nonisolated let directory: URL
+    private let store: HistoryStore
+
+    public init(directory: URL) {
+        self.directory = directory
+        self.store = HistoryStore(directory: directory)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    }
+
+    public nonisolated func audioURL(_ entry: HistoryEntry) -> URL? {
+        guard let filename = entry.audioFile else { return nil }
+        return directory.appendingPathComponent("audio", isDirectory: true)
+            .appendingPathComponent(filename)
+    }
+
+    @discardableResult
+    public func append(_ entry: HistoryEntry, audio: AudioSamples?) -> HistoryEntry? {
+        var saved = entry
+        var savedAudioURL: URL?
+        if let audio, !audio.samples.isEmpty {
+            let filename = "\(entry.id).wav"
+            let audioDirectory = store.audioDirectory
+            try? FileManager.default.createDirectory(at: audioDirectory, withIntermediateDirectories: true)
+            let url = store.audioURL(filename)
+            if (try? audio.wavData().write(to: url, options: .atomic)) != nil {
+                saved.audioFile = filename
+                savedAudioURL = url
+            }
+        }
+        guard store.append(saved) else {
+            if let savedAudioURL { try? FileManager.default.removeItem(at: savedAudioURL) }
+            return nil
+        }
+        return saved
+    }
+
+    public func recent(_ limit: Int = 200) -> [HistoryEntry] {
+        store.recent(limit)
+    }
+
+    @discardableResult
+    public func update(_ entry: HistoryEntry) -> Bool {
+        store.update(entry)
+    }
+
+    @discardableResult
+    public func remove(id: UUID) -> Bool {
+        let audio = store.recent(Int.max).first(where: { $0.id == id }).flatMap(audioURL)
+        guard store.remove(id: id) else { return false }
+        if let audio, FileManager.default.fileExists(atPath: audio.path) {
+            do {
+                try FileManager.default.removeItem(at: audio)
+            } catch {
+                return false
+            }
+        }
+        return true
+    }
+
+    @discardableResult
+    public func clear() -> Bool {
+        store.clear()
     }
 }

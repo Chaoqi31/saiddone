@@ -84,6 +84,33 @@ final class PipelineTimeoutTests: XCTestCase {
         XCTAssertEqual(result.text, "polished")
     }
 
+    func testEmptyPolishFallsBackForNormalText() async throws {
+        let asr = EchoASRProvider(preset: "send the report tomorrow")
+        let orch = PipelineOrchestrator(asr: asr,
+                                        llm: SlowLLMProvider(delay: .milliseconds(1), polishOutput: ""),
+                                        llmTimeout: 5)
+        let result = try await orch.run(audio, mode: .dictation)
+        XCTAssertEqual(result.text, "send the report tomorrow")
+    }
+
+    func testExplicitCancelCanProduceEmptyPolish() async throws {
+        let asr = EchoASRProvider(preset: "send email no wait cancel that")
+        let orch = PipelineOrchestrator(asr: asr,
+                                        llm: SlowLLMProvider(delay: .milliseconds(1), polishOutput: ""),
+                                        llmTimeout: 5)
+        let result = try await orch.run(audio, mode: .dictation)
+        XCTAssertEqual(result.text, "")
+    }
+
+    func testPureFillerCanProduceEmptyPolish() async throws {
+        let asr = EchoASRProvider(preset: "嗯 那个 就是 呃")
+        let orch = PipelineOrchestrator(asr: asr,
+                                        llm: SlowLLMProvider(delay: .milliseconds(1), polishOutput: ""),
+                                        llmTimeout: 5)
+        let result = try await orch.run(audio, mode: .dictation)
+        XCTAssertEqual(result.text, "")
+    }
+
     func testZeroBudgetDisablesTimeout() async throws {
         let asr = EchoASRProvider(preset: "hello")
         let orch = PipelineOrchestrator(asr: asr, llm: SlowLLMProvider(delay: .milliseconds(100)),
