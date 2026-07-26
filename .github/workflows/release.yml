@@ -39,8 +39,8 @@ jobs:
           VERSION="${{ steps.version.outputs.version }}"
           awk -v ver="$VERSION" '
             $0 ~ "^# SaidDone v" ver "$" { found=1 }
-            found { print }
             found && /^# SaidDone v/ && $0 !~ "^# SaidDone v" ver "$" { exit }
+            found { print }
           ' RELEASE_NOTES.md > release-body.md
           if [ ! -s release-body.md ]; then
             cp RELEASE_NOTES.md release-body.md

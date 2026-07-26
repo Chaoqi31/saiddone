@@ -28,6 +28,22 @@ final class PrivacyAndHotkeyTests: XCTestCase {
         pasteboard.releaseGlobally()
     }
 
+    func testFastDraftReplacementNeverUsesBlindUndo() throws {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let source = try String(contentsOf: root.appendingPathComponent("Sources/SaidDoneApp/InsertionService.swift"))
+
+        XCTAssertFalse(source.contains("synthesizeCommandZ"))
+    }
+
+    func testFastDraftReplacementValidatesOriginalTargetAndCancelsClipboardRestore() throws {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let source = try String(contentsOf: root.appendingPathComponent("Sources/SaidDoneApp/InsertionService.swift"))
+
+        XCTAssertTrue(source.contains("insertFastDraft"))
+        XCTAssertTrue(source.contains("CFEqual"))
+        XCTAssertTrue(source.contains("cancelPendingPasteboardRestore"))
+    }
+
     func testDuplicateHotkeysAreReported() {
         var config = AppConfig.default
         config.translationHotkey = config.dictationHotkey

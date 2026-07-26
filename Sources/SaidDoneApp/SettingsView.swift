@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
 import SaidDoneCore
+import SaidDoneProviders
 
 /// Editable view-model over AppConfig. `onSave` persists + lets the controller rebuild providers.
 @MainActor
@@ -224,14 +225,10 @@ struct SettingsView: View {
 
     /// Whether the currently-selected local models are present on disk (checked live, per exact model).
     private func asrPresent() -> Bool {
-        let dir = SetupModel.modelsRoot.appendingPathComponent("argmaxinc/whisperkit-coreml")
-            .appendingPathComponent(model.config.asr.modelID)
-        return SetupModel.dirNonEmpty(dir)
+        ModelStorage.isWhisperReady(modelID: model.config.asr.modelID)
     }
     private func llmPresent() -> Bool {
-        let cfg = SetupModel.modelsRoot.appendingPathComponent(model.config.llm.modelID)
-            .appendingPathComponent("config.json")
-        return FileManager.default.fileExists(atPath: cfg.path)
+        ModelStorage.isMLXReady(modelID: model.config.llm.modelID)
     }
 
     /// Inline download status for a local model: ready ✓, in-progress, or a Download button.

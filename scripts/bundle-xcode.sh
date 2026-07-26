@@ -9,8 +9,8 @@ DD=/tmp/dd-saiddone
 APP="dist/SaidDone.app"
 PROD="$DD/Build/Products/Debug"
 
-# Version: set SAIDDONE_VERSION in CI (e.g. 1.1.0 from tag v1.1.0).
-VER="${SAIDDONE_VERSION:-1.1.0}"
+# Version: set SAIDDONE_VERSION in CI (e.g. 1.2.0 from tag v1.2.0).
+VER="${SAIDDONE_VERSION:-1.2.0}"
 VER="${VER#v}"
 IFS=. read -r V_MAJ V_MIN V_PAT _ <<< "$VER"
 BUILD="${SAIDDONE_BUILD:-$((V_MAJ * 1000 + V_MIN * 100 + V_PAT))}"

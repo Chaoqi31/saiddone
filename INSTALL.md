@@ -43,7 +43,7 @@ On first launch a **Setup Assistant** opens and walks you through everything:
 3. **Choose your engines** — independently pick where each stage runs:
    - **Speech → text (ASR):** Local (WhisperKit, on-device) or Cloud.
    - **AI polish (LLM):** Local (MLX Qwen3, on-device) or Cloud.
-   - No cloud key? Keep both **Local** — that's the default.
+   - No cloud key? Switch both stages to **Local** — the zero-key path is fully supported.
 4. **Set up** — download the local models (with progress), and/or enter and **test** your cloud API key.
 5. **Try it** — record a sentence and confirm the whole pipeline works (this won't type anywhere).
 6. **Done** — review the shortcuts and optionally enable launch-at-login.
@@ -54,7 +54,7 @@ You can re-run it any time from the menu-bar icon → **Setup Assistant…**
 
 ## 5. Models & download size
 
-The default is **fully local** (private, offline, no API key):
+The fully local path is private, offline, and needs no API key:
 
 | Stage | Default model | Size |
 |---|---|---|
@@ -65,7 +65,7 @@ The default is **fully local** (private, offline, no API key):
 
 **On a mainland-China network**, downloads from `huggingface.co` often stall. In the Setup Assistant's download step, turn on **"Use the China mirror (hf-mirror.com)"** and retry.
 
-Prefer a smaller/faster local model? Pick **Qwen3 1.7B** or **0.6B** in the engines step (or later in **Settings → Providers**). Prefer top quality with a key? Choose **Cloud** for AI polish (e.g. DeepSeek) — best for Chinese day-to-day.
+Prefer a smaller/faster local model? Pick **Qwen3 1.7B** or **0.6B** in the engines step (or later in **Settings → Providers**). Prefer top quality with a key? Keep **Cloud** for ASR/polish (e.g. SiliconFlow + DeepSeek) — best for Chinese day-to-day.
 
 ## 6. Use it
 

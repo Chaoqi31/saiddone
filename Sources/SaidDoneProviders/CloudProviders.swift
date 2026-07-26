@@ -66,13 +66,23 @@ public struct CloudLLMProvider: LLMProvider {
         // Reasoning models (e.g. deepseek-v4-flash) spend completion budget on reasoning_tokens;
         // a tight max_tokens cap can yield empty polish → we fall back to the raw draft.
         let cap = min(max(text.count * 4 + 768, 768), 8192)
-        return try await chat(system: PolishPrompt.system(context: context),
-                              user: PolishPrompt.user(text), maxTokens: cap)
+        let out = try await chat(system: PolishPrompt.system(context: context),
+                                 user: PolishPrompt.user(text), maxTokens: cap)
+        return PolishOutput.normalize(out, source: text)
     }
 
     public func translate(_ text: String, to targetLanguage: String, context: PolishContext) async throws -> String {
         let sys = "Translate the user's text into \(targetLanguage). Output only the translation, no notes."
         return try await chat(system: sys, user: text)
+    }
+
+    public func polishAndTranslate(_ text: String, to targetLanguage: String,
+                                   context: PolishContext) async throws -> String {
+        let cap = min(max(text.count * 4 + 768, 768), 8192)
+        return try await chat(
+            system: PolishPrompt.translationSystem(targetLanguage: targetLanguage, context: context),
+            user: PolishPrompt.translationUser(text),
+            maxTokens: cap)
     }
 
     public func ask(_ question: String, selection: String, context: PolishContext) async throws -> String {

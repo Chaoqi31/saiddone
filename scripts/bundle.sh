@@ -7,6 +7,10 @@ cd "$(dirname "$0")/.."
 CONFIG="${1:-release}"
 APP="dist/SaidDone.app"
 BIN_NAME="SaidDone"
+VER="${SAIDDONE_VERSION:-1.2.0}"
+VER="${VER#v}"
+IFS=. read -r V_MAJ V_MIN V_PAT _ <<< "$VER"
+BUILD="${SAIDDONE_BUILD:-$((V_MAJ * 1000 + V_MIN * 100 + V_PAT))}"
 
 echo "Building ($CONFIG)…"
 swift build -c "$CONFIG"
@@ -16,7 +20,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/$BIN_NAME"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -27,8 +31,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key>       <string>SaidDone</string>
   <key>CFBundleIconFile</key>         <string>AppIcon</string>
   <key>CFBundlePackageType</key>      <string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>CFBundleVersion</key>          <string>1</string>
+  <key>CFBundleShortVersionString</key><string>${VER}</string>
+  <key>CFBundleVersion</key>          <string>${BUILD}</string>
   <key>LSMinimumSystemVersion</key>   <string>14.0</string>
   <key>LSUIElement</key>              <true/>
   <key>NSMicrophoneUsageDescription</key>

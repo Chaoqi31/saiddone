@@ -14,7 +14,7 @@ public struct PipelineResult: Sendable {
     public var elapsed: TimeInterval
     /// Post-ASR, dictionary-corrected text before polish (for fast-insert UX).
     public var draftText: String?
-    /// True when polish returned the same text as the draft (timeout degrade or no change).
+    /// True when Dictation/Translation returned the same text as the corrected draft.
     public var polishSkipped: Bool
     public init(text: String, rawTranscript: String, elapsed: TimeInterval,
                 draftText: String? = nil, polishSkipped: Bool = false) {
@@ -26,85 +26,138 @@ public struct PipelineResult: Sendable {
     }
 }
 
+/// Per-run policy and context. The Pipeline owns stage ordering; callers supply only user choices.
+public struct PipelineOptions: Sendable {
+    public var context: PolishContext
+    public var languageHint: String?
+    public var askSelection: String
+    public var fastDraftEnabled: Bool
+    public var voiceCommandsEnabled: Bool
+
+    public init(
+        context: PolishContext = .none,
+        languageHint: String? = nil,
+        askSelection: String = "",
+        fastDraftEnabled: Bool = false,
+        voiceCommandsEnabled: Bool = false
+    ) {
+        self.context = context
+        self.languageHint = languageHint
+        self.askSelection = askSelection
+        self.fastDraftEnabled = fastDraftEnabled
+        self.voiceCommandsEnabled = voiceCommandsEnabled
+    }
+}
+
 /// Orchestrates one Mode's pipeline (ARCHITECTURE data flow):
 /// Capture(audio) → ASR → Custom Dictionary → Polish [→ Translate] → text for Insert.
 public struct PipelineOrchestrator: Sendable {
     public var asr: ASRProvider
     public var llm: LLMProvider
     public var dictionary: CustomDictionary
-    /// Per-LLM-stage latency budget in seconds (GOALS B1 runtime gate). 0/nil = no budget.
-    /// On timeout, Polish degrades to the dictionary-corrected transcript (never lose the user's
-    /// words); Translate throws `latencyBudgetExceeded` (a stale source-language insert is worse).
+    /// Per-Mode AI-operation latency budget in seconds. ASR is timed independently by its Provider.
+    /// 0/nil = no budget; timeout throws `latencyBudgetExceeded`.
     public var llmTimeout: TimeInterval?
     /// Optional 0…1 progress + stage label (e.g. for the recording overlay).
     public var onProgress: (@Sendable (Double, String) -> Void)?
+    /// Optional fast-Insert hook. Returns true only when the draft actually reached the target app.
+    public var onDraft: (@Sendable (String) async -> Bool)?
 
     public init(asr: ASRProvider, llm: LLMProvider, dictionary: CustomDictionary = .init(),
                 llmTimeout: TimeInterval? = nil,
-                onProgress: (@Sendable (Double, String) -> Void)? = nil) {
+                onProgress: (@Sendable (Double, String) -> Void)? = nil,
+                onDraft: (@Sendable (String) async -> Bool)? = nil) {
         self.asr = asr
         self.llm = llm
         self.dictionary = dictionary
         self.llmTimeout = llmTimeout
         self.onProgress = onProgress
+        self.onDraft = onDraft
     }
 
-    /// Run audio through the full pipeline for `mode`. `context` is the resolved App Profile tone.
-    /// ASR + dictionary cleanup only (for fast-insert dictation).
-    public func transcribeToDraft(_ audio: AudioSamples, languageHint: String? = nil) async throws -> (raw: String, corrected: String) {
-        onProgress?(0.05, "transcribing")
-        let raw = try await asr.transcribe(audio.trimmedSilence(), languageHint: languageHint)
-        let corrected = dictionary.apply(to: ASRCleanup.strip(raw))
-        onProgress?(0.45, "polishing")
-        return (raw, corrected)
-    }
-
-    /// Polish/translate after `transcribeToDraft`.
-    public func finish(_ corrected: String, mode: Mode, context: PolishContext) async throws -> PipelineResult {
+    /// Run one complete Mode pipeline. Callers do not orchestrate individual ASR/LLM stages.
+    public func run(_ audio: AudioSamples, mode: Mode,
+                    options: PipelineOptions = .init()) async throws -> PipelineResult {
         let clock = ContinuousClock()
         let start = clock.now
+        onProgress?(0.05, "transcribing")
+        let raw = try await asr.transcribe(
+            audio.trimmedSilence(), languageHint: options.languageHint)
+        let corrected = dictionary.apply(to: ASRCleanup.strip(raw))
         guard !corrected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return PipelineResult(text: "", rawTranscript: corrected, elapsed: 0)
+            return PipelineResult(
+                text: "", rawTranscript: raw,
+                elapsed: start.duration(to: clock.now).asSeconds)
         }
+
+        var insertedDraft: String?
+        if case .dictation = mode,
+           options.fastDraftEnabled,
+           !PolishOutput.acceptsEmpty(for: corrected),
+           let onDraft {
+            let draft = options.voiceCommandsEnabled ? VoiceCommands.apply(corrected) : corrected
+            if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               await onDraft(draft) {
+                insertedDraft = draft
+            }
+        }
+
         let final: String
         switch mode {
         case .dictation:
-            final = try await polishWithBudget(corrected, context: context)
+            onProgress?(0.45, "polishing")
+            final = try await polishWithBudget(corrected, context: options.context)
         case .translation(let target):
-            let polished = try await polishWithBudget(corrected, context: context)
-            guard let translated = try await withBudget({ try await llm.translate(polished, to: target, context: context) }) else {
+            onProgress?(0.45, "translating")
+            guard let translated = try await withBudget({
+                try await llm.polishAndTranslate(
+                    corrected, to: target, context: options.context)
+            }) else {
                 throw ProviderError.latencyBudgetExceeded
             }
             final = translated
         case .ask:
-            final = corrected
+            onProgress?(0.45, "asking")
+            guard let answer = try await withBudget({
+                try await llm.ask(
+                    corrected, selection: options.askSelection, context: options.context)
+            }) else {
+                throw ProviderError.latencyBudgetExceeded
+            }
+            final = answer
         }
+
+        let commandOutput = options.voiceCommandsEnabled ? VoiceCommands.apply(final) : final
+        let output = commandOutput.trimmingCharacters(in: .whitespacesAndNewlines)
         onProgress?(1.0, "done")
         let elapsed = start.duration(to: clock.now).asSeconds
-        let skipped = final.trimmingCharacters(in: .whitespacesAndNewlines)
-            == corrected.trimmingCharacters(in: .whitespacesAndNewlines)
-        return PipelineResult(text: final, rawTranscript: corrected, elapsed: elapsed,
-                              draftText: corrected, polishSkipped: skipped)
-    }
-
-    public func run(_ audio: AudioSamples, mode: Mode, context: PolishContext = .none,
-                    languageHint: String? = nil) async throws -> PipelineResult {
-        let (raw, corrected) = try await transcribeToDraft(audio, languageHint: languageHint)
-        guard !corrected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return PipelineResult(text: "", rawTranscript: raw, elapsed: 0)
+        let skipped: Bool
+        switch mode {
+        case .ask:
+            skipped = false
+        case .dictation, .translation:
+            skipped = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                == corrected.trimmingCharacters(in: .whitespacesAndNewlines)
         }
-        var result = try await finish(corrected, mode: mode, context: context)
-        result.rawTranscript = raw
-        return result
+        return PipelineResult(
+            text: output,
+            rawTranscript: raw,
+            elapsed: elapsed,
+            draftText: insertedDraft,
+            polishSkipped: skipped)
     }
 
     /// Polish under the latency budget: timeout is a hard error, never silently fall back to the
     /// unpolished transcript — the user explicitly wants polished output or a visible failure.
     private func polishWithBudget(_ text: String, context: PolishContext) async throws -> String {
-        guard let polished = try await withBudget({ try await llm.polish(text, context: context) }) else {
+        guard let rawPolished = try await withBudget({ try await llm.polish(text, context: context) }) else {
             throw ProviderError.latencyBudgetExceeded
         }
-        return polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? text : polished
+        let polished = PolishOutput.normalize(rawPolished, source: text)
+        if polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return PolishOutput.acceptsEmpty(for: text) ? "" : text
+        }
+        return polished
     }
 
     /// Run `op` racing the budget. Returns nil on timeout; no budget = just run `op`.

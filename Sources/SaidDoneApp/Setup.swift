@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import AVFoundation
 import ApplicationServices
+import SaidDoneProviders
 
 /// Onboarding/status: permissions + model readiness, shown in the main window.
 @MainActor
@@ -16,6 +17,7 @@ final class SetupModel: ObservableObject {
     @Published var downloadProgress: Double?
     @Published var llmDownloadProgress: Double?
     @Published var useMirror = false
+    var asrModelID: String = ""
     var llmModelID: String = ""
     var onPrepare: (() async -> Void)?
     var onDownloadASR: ((@escaping @Sendable (Double) -> Void) async throws -> Void)?
@@ -52,18 +54,22 @@ final class SetupModel: ObservableObject {
         }
     }
 
-    var modelsPath: String { Self.modelsRoot.path(percentEncoded: false) }
+    var modelsPath: String {
+        "Speech: \(ModelStorage.whisperCanonicalBase.path(percentEncoded: false)) · "
+            + "AI: \(ModelStorage.mlxModelsRoot.path(percentEncoded: false))"
+    }
     func revealModelsFolder() {
-        try? FileManager.default.createDirectory(at: Self.modelsRoot, withIntermediateDirectories: true)
-        NSWorkspace.shared.open(Self.modelsRoot)
+        for root in [ModelStorage.whisperCanonicalBase, ModelStorage.mlxModelsRoot] {
+            try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            NSWorkspace.shared.open(root)
+        }
     }
 
     func refresh() {
         micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         axGranted = AXIsProcessTrusted()
-        asrReady = Self.dirNonEmpty(Self.modelsRoot.appendingPathComponent("argmaxinc/whisperkit-coreml"))
-        let llmDir = Self.modelsRoot.appendingPathComponent(llmModelID)
-        llmReady = FileManager.default.fileExists(atPath: llmDir.appendingPathComponent("config.json").path)
+        asrReady = ModelStorage.isWhisperReady(modelID: asrModelID)
+        llmReady = ModelStorage.isMLXReady(modelID: llmModelID)
     }
 
     func prepare() {
@@ -77,12 +83,6 @@ final class SetupModel: ObservableObject {
         }
     }
 
-    static var modelsRoot: URL {
-        URL.documentsDirectory.appending(path: "huggingface/models", directoryHint: .isDirectory)
-    }
-    static func dirNonEmpty(_ url: URL) -> Bool {
-        (try? FileManager.default.contentsOfDirectory(atPath: url.path).isEmpty == false) ?? false
-    }
 }
 
 struct SetupView: View {
