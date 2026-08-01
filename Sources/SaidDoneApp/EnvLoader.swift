@@ -5,7 +5,7 @@ import SaidDoneCore
 enum EnvLoader {
     /// Apply `DEEPSEEK_*` / `OPENAI_*` vars from `~/Library/Application Support/SaidDone/.env`.
     @discardableResult
-    static func mergeInto(_ config: inout AppConfig, store: ConfigStore) -> Bool {
+    static func mergeInto(_ config: inout AppConfig) -> Bool {
         guard let vars = load(), !vars.isEmpty else { return false }
         var changed = false
         if let key = vars["DEEPSEEK_API_KEY"], !key.isEmpty,
@@ -26,7 +26,6 @@ enum EnvLoader {
             config.cloud.asrKey = key
             changed = true
         }
-        if changed { try? store.save(config) }
         return changed
     }
 

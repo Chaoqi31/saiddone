@@ -428,6 +428,7 @@ private struct HistoryPane: View {
     @ObservedObject var model: HistoryModel
     @State private var editing: HistoryEntry?
     @State private var draft = ""
+    @State private var confirmingClear = false
 
     private var groups: [(String, [HistoryEntry])] {
         let cal = Calendar.current
@@ -466,11 +467,21 @@ private struct HistoryPane: View {
                     Button("Refresh") { model.refresh() }
                     Button("Export…") { model.exportAll() }
                     Divider()
-                    Button("Clear all", role: .destructive) { model.clear() }
+                    Button("Clear all", role: .destructive) { confirmingClear = true }
                 } label: { Image(systemName: "ellipsis.circle") }
             }
         }
         .sheet(item: $editing) { e in editSheet(e) }
+        .confirmationDialog(
+            "Clear all history?",
+            isPresented: $confirmingClear,
+            titleVisibility: .visible
+        ) {
+            Button("Clear all history", role: .destructive) { model.clear() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This permanently deletes every saved transcript and its audio recording.")
+        }
     }
 
     private func editSheet(_ e: HistoryEntry) -> some View {
@@ -481,6 +492,7 @@ private struct HistoryPane: View {
                 .font(.caption).foregroundStyle(.secondary)
             TextEditor(text: $draft).font(.body).frame(minHeight: 120)
                 .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
+                .accessibilityLabel("Edited transcript")
             if detected.isEmpty {
                 Label("No new dictionary terms detected.", systemImage: "info.circle")
                     .font(.caption).foregroundStyle(.secondary)
@@ -518,7 +530,7 @@ private struct HistoryPane: View {
                 }
                 Spacer()
                 Button { model.onReinsert?(e.text) } label: { Image(systemName: "arrow.up.left.square") }
-                    .buttonStyle(.borderless).help("Insert at cursor")
+                    .buttonStyle(.borderless).help("Insert at cursor").accessibilityLabel("Insert at cursor")
                 Button { copyToClipboard(e.text) } label: { Image(systemName: "doc.on.doc") }
                     .buttonStyle(.borderless).help("Copy")
                 Menu {

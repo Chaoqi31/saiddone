@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Generate AppIcon.icns: a flat speech-bubble-with-checkmark mark ("said" + "done") in white with a
 # negative-space check, on a near-black macOS squircle. Output: $1 (default dist/AppIcon.icns).
-# Also refreshes the committed README logo (assets/logo.png) from the same master. Not committed (.icns).
+# Set SAIDDONE_REFRESH_README_LOGO=1 to refresh the committed README logo from the same master.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 OUT="${1:-dist/AppIcon.icns}"
@@ -73,8 +73,11 @@ done
 mkdir -p "$(dirname "$OUT")"
 iconutil -c icns "$SET" -o "$OUT"
 
-# Refresh the committed README logo (256px) from the same master.
-sips -z 256 256 "$MASTER" --out "assets/logo.png" >/dev/null 2>&1 || true
+# Building the app should not rewrite a tracked source asset. Refresh it only when intentionally
+# updating the brand artwork.
+if [[ "${SAIDDONE_REFRESH_README_LOGO:-0}" == "1" ]]; then
+  sips -z 256 256 "$MASTER" --out "assets/logo.png" >/dev/null 2>&1 || true
+fi
 
 echo "icon -> $OUT"
 rm -rf "$TMP"

@@ -60,4 +60,25 @@ final class ConfigDecodeTests: XCTestCase {
         XCTAssertEqual(store.load().cloud.llmAPIKeys["openai"], "llm-secret")
         XCTAssertEqual(store.load().cloud.asrKey, "asr-secret")
     }
+
+    func testLoadWithoutSecretsLeavesRuntimeKeysEmpty() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let store = ConfigStore(
+            directory: dir,
+            secrets: KeychainSecrets(service: "SaidDoneTests.\(UUID().uuidString)"))
+        var cfg = AppConfig.default
+        cfg.cloud.llmProviderID = "openai"
+        cfg.cloud.llmAPIKeys = ["openai": "runtime-only"]
+        cfg.cloud.asrKey = "runtime-only-asr"
+
+        try store.saveWithoutSecrets(cfg)
+        let decoded = store.loadWithoutSecrets()
+
+        XCTAssertEqual(decoded.cloud.llmAPIKeys, [:])
+        XCTAssertTrue(decoded.cloud.asrKey.isEmpty)
+        XCTAssertEqual(decoded.cloud.llmProviderID, "openai")
+    }
 }

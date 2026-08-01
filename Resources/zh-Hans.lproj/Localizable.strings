@@ -26,9 +26,9 @@
 "characters" = "个字符";
 "typing saved" = "节省打字";
 "≈%lld min" = "≈%lld 分钟";
-"speak → press again to stop & insert" = "说话 → 再按一次停止并插入";
-"speak one language, insert another" = "说一种语言，插入另一种";
-"select text, speak an instruction" = "选中文本，说出指令";
+"press to start and stop voice input" = "按一次开始语音输入，再按一次停止";
+"press to start and stop translation" = "按一次开始翻译，再按一次停止";
+"press to start and stop asking" = "按一次开始提问，再按一次停止";
 "Text lands at your cursor — click into a field first." = "文字将插入到光标处 — 请先点进输入框";
 "No dictations yet. Press ⌃⌥D to start." = "还没有听写记录。按 ⌃⌥D 开始。";
 "See all %lld →" = "查看全部 %lld 条 →";
@@ -39,6 +39,9 @@
 "Refresh" = "刷新";
 "Export…" = "导出…";
 "Clear all" = "清空全部";
+"Clear all history?" = "清空全部历史记录？";
+"Clear all history" = "清空全部历史记录";
+"This permanently deletes every saved transcript and its audio recording." = "这会永久删除所有已保存的转写文本及对应录音。";
 "Today" = "今天";
 "Yesterday" = "昨天";
 "No dictations yet" = "还没有听写记录";
@@ -56,6 +59,7 @@
 "Insert at cursor" = "插入到光标处";
 "Copy" = "复制";
 "More" = "更多";
+"Edited transcript" = "编辑后的转写文本";
 
 /* Dictionary */
 "Import" = "导入";
@@ -76,6 +80,8 @@
 "Setup" = "设置向导";
 
 /* Settings — General */
+"App language" = "界面语言";
+"Use system language" = "跟随系统语言";
 "Primary spoken language" = "主要口语语言";
 "Chinese (中文)" = "中文";
 "English" = "英语";
@@ -98,13 +104,14 @@
 "Off" = "关";
 "Export Settings…" = "导出设置…";
 "Import Settings…" = "导入设置…";
-"Export / import your full configuration as JSON. Note: this includes any cloud API keys — share the file carefully." = "以 JSON 导出/导入完整配置。注意：其中包含云端 API Key — 分享时请谨慎。";
+"Export / import your configuration as JSON. Cloud API keys stay in Keychain and are omitted from exports." = "以 JSON 导出或导入配置。云端 API Key 保存在钥匙串中，不会写入导出文件。";
 
 /* Settings — Providers */
 "Run on" = "运行于";
 "Local" = "本地";
 "Engine" = "引擎";
 "Model" = "模型";
+"Model (free text if not listed)" = "模型（列表中没有时可手动填写）";
 "— set in Cloud tab" = "— 在“云端”标签页设置";
 "Speech recognition (ASR)" = "语音识别 (ASR)";
 "Whisper large-v3 — recommended, most accurate" = "Whisper large-v3 — 推荐，最准确";
@@ -121,15 +128,19 @@
 "Qwen3 8B — best, heavy" = "Qwen3 8B — 最佳，较重";
 "Downloaded" = "已下载";
 "Not downloaded" = "未下载";
+"Built-in presets can be edited by changing the Base URL/model." = "内置预设仍可通过修改 Base URL 或模型来自定义。";
 
 /* Settings — Cloud */
-"Keys are saved in config.json and audio/text leaves your device. Pick Cloud for a stage in the Providers tab to use these." = "Key 保存在 config.json 中，音频/文本会离开你的设备。在“引擎”标签页将某一阶段设为“云端”即可启用。";
+"API keys are stored in Keychain (never in exported JSON). Audio/text leaves your device when Cloud is selected in Providers." = "API Key 保存在钥匙串中（绝不会写入导出的 JSON）。在“引擎”中选择云端时，音频或文本会离开你的设备。";
+"Optional: place a `.env` with DEEPSEEK_API_KEY in Application Support/SaidDone/ to auto-fill on launch." = "可选：在 Application Support/SaidDone/ 中放置含 DEEPSEEK_API_KEY 的 `.env`，启动时自动填入。";
 "LLM — polish / translate / ask" = "大模型 — 润色 / 翻译 / 随便问";
+"Provider" = "服务商";
 "API key" = "API Key";
 "Show API key" = "显示 API Key";
 "Hide API key" = "隐藏 API Key";
 "Base URL" = "Base URL";
 "ASR — speech (OpenAI-compatible)" = "ASR — 语音（OpenAI 兼容）";
+"Examples: gpt-4o-mini-transcribe (fast), gpt-4o-transcribe (accurate), whisper-1. SiliconFlow SenseVoice also works." = "示例：gpt-4o-mini-transcribe（快）、gpt-4o-transcribe（准）、whisper-1；也支持 SiliconFlow SenseVoice。";
 "Proxy (optional)" = "代理（可选）";
 "Host" = "主机";
 "Port" = "端口";
@@ -149,13 +160,24 @@
 "Microphone" = "麦克风";
 "Accessibility (paste into apps)" = "辅助功能（粘贴到应用）";
 "Models (on-device)" = "模型（本地）";
+"Engine readiness" = "引擎就绪状态";
 "Speech (WhisperKit)" = "语音 (WhisperKit)";
+"Speech — Local (WhisperKit)" = "语音 — 本地 (WhisperKit)";
+"Speech — Cloud" = "语音 — 云端";
+"AI — Local" = "AI — 本地";
+"AI — Cloud" = "AI — 云端";
 "LLM (%@)" = "大模型 (%@)";
 "Download speech model" = "下载语音模型";
 "Downloading…" = "下载中…";
 "Missing LLM model → download it in Setup (or run `scripts/get-models.sh`). SaidDone never silently switches engines." = "缺少大模型 → 请在“设置向导”中下载（或运行 `scripts/get-models.sh`）。SaidDone 不会静默切换引擎。";
 "Prepare / Warm models" = "准备 / 预热模型";
 "Preparing…" = "准备中…";
+"Prepare engines" = "准备引擎";
+"Preparing engines…" = "正在准备引擎…";
+"Preparing selected engines…" = "正在准备所选引擎…";
+"Cloud engines do not require model downloads." = "云端引擎无需下载模型。";
+"Complete cloud speech settings in the Cloud tab." = "请在“云端”标签页完成语音引擎配置。";
+"Complete cloud AI settings in the Cloud tab." = "请在“云端”标签页完成 AI 引擎配置。";
 "Downloading speech model…" = "正在下载语音模型…";
 "Speech model ready" = "语音模型就绪";
 "Download AI model" = "下载 AI 模型";
@@ -183,6 +205,8 @@
 "Translating" = "翻译中";
 "Thinking…" = "思考中…";
 "Ask — speak your question" = "随便问 — 说出问题或指令";
+"Finish & insert" = "完成并插入";
+"Cancel recording" = "取消录音";
 "Inserted" = "已插入";
 "Inserted · on clipboard" = "已插入 · 已复制到剪贴板";
 
@@ -201,6 +225,7 @@
 /* Menu bar */
 "Speech: %@ · AI: %@" = "语音：%@ · AI：%@";
 "Model not downloaded — open Setup" = "模型未下载 — 打开设置向导";
+"Cloud setup incomplete — open Settings" = "云端配置未完成 — 打开设置";
 "Stop & Insert — %@" = "停止并插入 — %@";
 "Cancel (discard)" = "取消（放弃）";
 "Working…" = "处理中…";
@@ -221,26 +246,32 @@
 "Choose your language" = "选择语言";
 "You can change this later in Settings." = "之后可在“设置”中更改。";
 "Speak. AI polishes what you said. It lands at your cursor — in any app." = "开口说话，AI 自动润色，文字直接出现在光标处 — 任何应用都行。";
-"Hold a hotkey, talk, release — your words appear, cleaned up." = "按住快捷键说话，松开 — 你的话被整理后自动出现。";
-"Local-first & private: runs fully on-device, or use a cloud model if you prefer." = "本地优先、隐私安全：可完全在本机运行，也可按需用云端模型。";
+"Press a hotkey once to start, speak, then press it again to stop and insert." = "按一次快捷键开始说话，再按一次停止并插入。";
+"Cloud models by default for the best accuracy — or fully on-device, zero-key and private, if you prefer." = "默认使用云端模型以获得最佳准确率；也可切换为完全本地运行，无需 Key，更注重隐私。";
 "Requires Apple Silicon · macOS 14+." = "需要 Apple 芯片 · macOS 14 及以上。";
 "This quick setup grants permissions, picks your engines, and downloads what's needed." = "这个快速设置会授予权限、选择引擎并下载所需模型。";
 "Grant permissions" = "授予权限";
 "SaidDone needs two macOS permissions to work." = "SaidDone 需要两项 macOS 权限才能工作。";
 "To hear your speech. Audio is processed for transcription only." = "用于听取你的语音。音频仅用于转写。";
 "Allow Microphone" = "允许麦克风";
+"Open Microphone Settings…" = "打开麦克风设置…";
 "Accessibility" = "辅助功能";
 "To paste the result into the app you're typing in. Without it, results are still saved to History — they just won't auto-insert." = "用于把结果粘贴到你正在输入的应用。没有它，结果仍会保存到“历史”，只是不会自动插入。";
 "Open Settings…" = "打开系统设置…";
-"Microphone is required to continue. If you denied it, click Allow again or enable it in System Settings → Privacy & Security → Microphone." = "继续需要麦克风权限。若已拒绝，请再次点击“允许”，或在 系统设置 → 隐私与安全性 → 麦克风 中开启。";
+"Microphone access was denied. Enable SaidDone in System Settings → Privacy & Security → Microphone, then click Re-check." = "麦克风权限已被拒绝。请在 系统设置 → 隐私与安全性 → 麦克风 中启用 SaidDone，然后点击“重新检查”。";
+"Microphone access is restricted by system policy. Contact your administrator to allow SaidDone." = "麦克风访问受系统策略限制。请联系管理员为 SaidDone 开放权限。";
+"Microphone is required to continue. Click Allow Microphone to grant access." = "继续需要麦克风权限。点击“允许麦克风”以授予访问权限。";
 "Choose your engines" = "选择引擎";
-"Pick where each stage runs. No cloud key? Keep both Local." = "选择每个阶段在哪运行。没有云端 Key？两个都保持“本地”即可。";
+"Cloud is recommended for best quality. No API keys? Switch both stages to Local for a fully offline setup." = "云端模式效果更稳。没有 API Key？将两个阶段都切换为本地，即可完全离线使用。";
 "Speech → text" = "语音 → 文字";
 "AI polish" = "AI 润色";
 "Local (on-device)" = "本地（在本机）";
 "Cloud (API key)" = "云端（API Key）";
 "You'll enter your API key on the next step." = "下一步填写你的 API Key。";
-"Best for daily Chinese use: Speech = Local, AI polish = Cloud (DeepSeek)." = "中文日常最佳：语音=本地，AI 润色=云端（DeepSeek）。";
+"On-device models are smaller and can mishear technical terms or mixed-language speech more often. Cloud gives the most reliable results." = "本地模型体积更小，可能更容易误听技术术语或中英混说；云端通常更稳定。";
+"Whisper large-v3-turbo — recommended (fast, ~1.5 GB)" = "Whisper large-v3-turbo — 推荐（速度快，约 1.5 GB）";
+"Whisper large-v3 — most accurate, slower (~3 GB)" = "Whisper large-v3 — 最准确，速度较慢（约 3 GB）";
+"Qwen3 4B — recommended, best Chinese (~2.3 GB)" = "Qwen3 4B — 推荐，中文效果最佳（约 2.3 GB）";
 "Set up your engines" = "配置你的引擎";
 "Download local models or connect your cloud account." = "下载本地模型，或连接你的云端账户。";
 "Speech model" = "语音模型";
@@ -261,7 +292,7 @@
 "Try saying: “今天天气不错，我们出去走走吧”" = "试着说：“今天天气不错，我们出去走走吧”";
 "Try saying: “嗯…帮我把这句话整理一下，去掉那些口头禅”" = "试着说：“嗯…帮我把这句话整理一下，去掉那些口头禅”";
 "Shortcuts — click a shortcut to change it" = "快捷键 — 点击可修改";
-"Loading the AI model for the first time — this can take a minute. Later launches are instant." = "首次加载 AI 模型 — 可能需要一两分钟。之后启动即时可用。";
+"Loading local models into memory — about 1–2 minutes the first time after each launch. You can use other features while this runs." = "正在将本地模型载入内存 — 每次启动后首次约需 1–2 分钟；等待期间仍可使用其他功能。";
 "Start recording" = "开始录音";
 "Stop & transcribe" = "停止并转写";
 "Transcribing…" = "转写中…";
@@ -271,10 +302,12 @@
 "You're all set" = "全部就绪";
 "Translation" = "翻译";
 "Rewrite selected text" = "改写选中文本";
-"Click into any text field first, then hold the hotkey and speak. Release to insert." = "先点进任意输入框，按住快捷键说话，松开即插入。";
+"Click into any text field first. Press the hotkey once to start, then again to stop and insert." = "先点进任意输入框。按一次快捷键开始，再按一次停止并插入。";
 "Launch SaidDone at login" = "登录时启动 SaidDone";
 "SaidDone lives in the menu bar. Open it any time from the menu-bar icon." = "SaidDone 常驻菜单栏。随时可从菜单栏图标打开。";
 "Start Using SaidDone" = "开始使用 SaidDone";
+"Setup progress" = "设置进度";
+"Step %lld of %lld" = "第 %lld 步，共 %lld 步";
 
 /* Errors (overlay) */
 "Loading model…" = "正在加载模型…";
@@ -284,6 +317,11 @@
 "Inserted (unpolished draft)" = "已插入（未润色草稿）";
 "Speech model not downloaded — open Settings → Setup." = "语音模型未下载 — 请打开 设置 → 设置向导。";
 "AI model not downloaded — open Settings → Setup." = "AI 模型未下载 — 请打开 设置 → 设置向导。";
+"Cloud speech setup is incomplete — add its API key, Base URL, and model in Settings → Cloud." = "云端语音配置未完成 — 请在 设置 → 云端 填写 API Key、Base URL 和模型。";
+"Cloud AI setup is incomplete — add its API key, Base URL, and model in Settings → Cloud." = "云端 AI 配置未完成 — 请在 设置 → 云端 填写 API Key、Base URL 和模型。";
+"Microphone access is unavailable — enable SaidDone in System Settings → Privacy & Security → Microphone." = "麦克风不可用 — 请在 系统设置 → 隐私与安全性 → 麦克风 中启用 SaidDone。";
+"No working microphone input was found — check your input device and try again." = "未找到可用的麦克风输入 — 请检查输入设备后重试。";
+"Couldn't start recording — check your microphone input and try again." = "无法开始录音 — 请检查麦克风输入后重试。";
 "Network unavailable. Check your connection and try again." = "网络不可用，请检查连接后重试。";
 "Cloud setup issue — check your API key and endpoint in Settings → Cloud." = "云端配置有误 — 请在 设置 → 云端 检查 API Key 和地址。";
 "Engine unavailable. Please try again shortly." = "引擎暂不可用，请稍后重试。";

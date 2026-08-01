@@ -15,9 +15,12 @@ final class OnboardingModel: ObservableObject {
 
     // UI language ("en" / "zh-Hans"); applied live via onSetLanguage.
     @Published var appLanguage = "en"
+    private(set) var languageWasChosen = false
 
     // Permissions
     @Published var micGranted = false
+    @Published var micDenied = false
+    @Published var micRestricted = false
     @Published var axGranted = false
 
     // Engine choice (draft). Defaults = cloud for both stages — better accuracy and much stronger
@@ -67,11 +70,11 @@ final class OnboardingModel: ObservableObject {
     var tryToggle: (() async -> Void)?  // start / stop a test capture; writes tryRecording + tryResult
     var finishWizard: (() -> Void)?     // mark complete, persist, close wizard, open main window
 
-    static let asrModels: [(String, String)] = [
+    static let asrModels: [(LocalizedStringKey, String)] = [
         ("Whisper large-v3-turbo — recommended (fast, ~1.5 GB)", "openai_whisper-large-v3-v20240930_turbo"),
         ("Whisper large-v3 — most accurate, slower (~3 GB)", "openai_whisper-large-v3"),
     ]
-    static let llmModels: [(String, String)] = [
+    static let llmModels: [(LocalizedStringKey, String)] = [
         ("Qwen3 0.6B — fastest", "mlx-community/Qwen3-0.6B-4bit"),
         ("Qwen3 1.7B — faster", "mlx-community/Qwen3-1.7B-4bit"),
         ("Qwen3 4B — recommended, best Chinese (~2.3 GB)", "mlx-community/Qwen3-4B-4bit"),
@@ -96,6 +99,8 @@ final class OnboardingModel: ObservableObject {
 
     func refreshPermissions() {
         micGranted = Permissions.microphoneAuthorized()
+        micDenied = Permissions.microphoneDenied()
+        micRestricted = Permissions.microphoneRestricted()
         axGranted = Permissions.accessibilityTrusted(prompt: false)
     }
 
@@ -104,11 +109,48 @@ final class OnboardingModel: ObservableObject {
         llmReady = ModelStorage.isMLXReady(modelID: llmModelID)
     }
 
+    /// Seed a reopened assistant from the live config so finishing it cannot overwrite Settings
+    /// with stale wizard defaults. The effective language remains selected visually while the raw
+    /// empty override ("follow system") is preserved unless the user chooses a language here.
+    func loadDraft(from config: AppConfig, effectiveLanguage: String) {
+        appLanguage = config.appLanguage.isEmpty ? effectiveLanguage : config.appLanguage
+        languageWasChosen = false
+        asrLocal = config.asr.location == .local
+        asrModelID = config.asr.modelID
+        llmLocal = config.llm.location == .local
+        llmModelID = config.llm.modelID
+        cloud = config.cloud
+        hfMirror = !config.huggingFaceEndpoint.isEmpty
+        launchAtLogin = config.launchAtLogin
+        dictationHotkey = config.dictationHotkey
+        translationHotkey = config.translationHotkey
+        askHotkey = config.askHotkey
+        cloudLLMOK = nil
+        cloudASROK = nil
+        status = ""
+    }
+
     // MARK: actions (called by the view)
 
-    func chooseLanguage(_ code: String) { appLanguage = code; onSetLanguage?(code) }
+    func chooseLanguage(_ code: String) {
+        appLanguage = code
+        languageWasChosen = true
+        onSetLanguage?(code)
+    }
 
-    func grantMic() { Task { _ = await requestMic?(); refreshPermissions() } }
+    func appLanguageOverride(preserving current: String, onboardingCompleted: Bool) -> String {
+        (!onboardingCompleted || languageWasChosen) ? appLanguage : current
+    }
+
+    func grantMic() {
+        if micRestricted {
+            return
+        } else if micDenied {
+            openMicSettings()
+        } else {
+            Task { _ = await requestMic?(); refreshPermissions() }
+        }
+    }
     func openMicSettings() { Self.openPrivacy("Privacy_Microphone") }
     func openAXSettings() {
         _ = Permissions.accessibilityTrusted(prompt: true)   // also nudges the system prompt
@@ -274,6 +316,11 @@ private struct ProgressDots: View {
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.72), value: current)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Setup progress")
+        .accessibilityValue(String(
+            format: NSLocalizedString("Step %lld of %lld", comment: "onboarding progress"),
+            Int64(current + 1), Int64(total)))
     }
 }
 
@@ -320,7 +367,7 @@ private struct WelcomeStep: View {
             Text("Speak. AI polishes what you said. It lands at your cursor — in any app.")
                 .font(.title3).foregroundStyle(.secondary)
             VStack(alignment: .leading, spacing: 8) {
-                bullet("mic.fill", "Hold a hotkey, talk, release — your words appear, cleaned up.")
+                bullet("mic.fill", "Press a hotkey once to start, speak, then press it again to stop and insert.")
                 bullet("sparkles", "Cloud models by default for the best accuracy — or fully on-device, zero-key and private, if you prefer.")
                 bullet("desktopcomputer", "Requires Apple Silicon · macOS 14+.")
             }.padding(.top, 6)
@@ -328,7 +375,7 @@ private struct WelcomeStep: View {
                 .font(.callout).foregroundStyle(.secondary).padding(.top, 4)
         }
     }
-    private func bullet(_ symbol: String, _ text: String) -> some View {
+    private func bullet(_ symbol: String, _ text: LocalizedStringKey) -> some View {
         Label { Text(text) } icon: { Image(systemName: symbol).foregroundStyle(.tint) }
     }
 }
@@ -341,14 +388,23 @@ private struct PermissionsStep: View {
             permRow(
                 title: "Microphone", granted: model.micGranted,
                 why: "To hear your speech. Audio is processed for transcription only.",
-                action: { model.grantMic() }, actionLabel: "Allow Microphone")
+                action: { model.grantMic() },
+                actionLabel: microphoneActionLabel)
             permRow(
                 title: "Accessibility", granted: model.axGranted,
                 why: "To paste the result into the app you're typing in. Without it, results are still saved to History — they just won't auto-insert.",
                 action: { model.openAXSettings() }, actionLabel: "Open Settings…")
             if !model.micGranted {
-                Text("Microphone is required to continue. If you denied it, click Allow again or enable it in System Settings → Privacy & Security → Microphone.")
-                    .font(.caption).foregroundStyle(.secondary)
+                if model.micRestricted {
+                    Text("Microphone access is restricted by system policy. Contact your administrator to allow SaidDone.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else if model.micDenied {
+                    Text("Microphone access was denied. Enable SaidDone in System Settings → Privacy & Security → Microphone, then click Re-check.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Microphone is required to continue. Click Allow Microphone to grant access.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             Button("Re-check") { model.refreshPermissions() }.controlSize(.small)
         }
@@ -356,8 +412,12 @@ private struct PermissionsStep: View {
             model.refreshPermissions()
         }
     }
+    private var microphoneActionLabel: LocalizedStringKey? {
+        if model.micRestricted { return nil }
+        return model.micDenied ? "Open Microphone Settings…" : "Allow Microphone"
+    }
     private func permRow(title: LocalizedStringKey, granted: Bool, why: LocalizedStringKey,
-                         action: @escaping () -> Void, actionLabel: LocalizedStringKey) -> some View {
+                         action: @escaping () -> Void, actionLabel: LocalizedStringKey?) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: granted ? "checkmark.circle.fill" : "circle.dashed")
                 .font(.title2).foregroundStyle(granted ? .green : .orange)
@@ -366,7 +426,7 @@ private struct PermissionsStep: View {
                 Text(why).font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
-            if !granted { Button(actionLabel, action: action) }
+            if !granted, let actionLabel { Button(actionLabel, action: action) }
         }
         .padding(12).background(.quaternary.opacity(0.4)).clipShape(RoundedRectangle(cornerRadius: 10))
     }
@@ -376,7 +436,7 @@ private struct EnginesStep: View {
     @ObservedObject var model: OnboardingModel
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            StepHeader("Choose your engines", "Cloud is recommended for both stages. No API key? Switch either to Local — fully offline, zero-key.")
+            StepHeader("Choose your engines", "Cloud is recommended for best quality. No API keys? Switch both stages to Local for a fully offline setup.")
             engineCard(
                 title: "Speech → text", symbol: "waveform",
                 isLocal: $model.asrLocal, modelID: $model.asrModelID, models: OnboardingModel.asrModels)
@@ -390,7 +450,7 @@ private struct EnginesStep: View {
     }
     private func engineCard(title: LocalizedStringKey, symbol: String,
                             isLocal: Binding<Bool>, modelID: Binding<String>,
-                            models: [(String, String)]) -> some View {
+                            models: [(LocalizedStringKey, String)]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label(title, systemImage: symbol).font(.headline)
             Picker("", selection: isLocal) {
@@ -613,7 +673,7 @@ private struct DoneStep: View {
                 HotkeyRecorder(label: "Ask Anything", hotkey: $model.askHotkey)
             }
             .padding(12).background(.quaternary.opacity(0.4)).clipShape(RoundedRectangle(cornerRadius: 10))
-            Text("Click into any text field first, then hold the hotkey and speak. Release to insert.")
+            Text("Click into any text field first. Press the hotkey once to start, then again to stop and insert.")
                 .font(.callout).foregroundStyle(.secondary)
             Toggle("Launch SaidDone at login", isOn: $model.launchAtLogin)
             Text("SaidDone lives in the menu bar. Open it any time from the menu-bar icon.")

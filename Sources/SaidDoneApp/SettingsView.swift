@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import Combine
 import UniformTypeIdentifiers
 import SaidDoneCore
 import SaidDoneProviders
@@ -36,7 +37,7 @@ final class ConfigModel: ObservableObject {
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let url = panel.url,
               let data = try? Data(contentsOf: url),
-              var cfg = try? JSONDecoder().decode(AppConfig.self, from: data) else { return }
+              let cfg = try? JSONDecoder().decode(AppConfig.self, from: data) else { return }
         // Inline keys in imported JSON are migrated to Keychain on save.
         config = cfg
         save()
@@ -80,6 +81,9 @@ struct SettingsView: View {
             SetupView(model: setup).tabItem { Text("Setup") }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onReceive(model.$config.dropFirst().debounce(for: .milliseconds(300), scheduler: RunLoop.main)) { _ in
+            model.save()
+        }
         .onDisappear { model.save() }
     }
 
@@ -88,6 +92,13 @@ struct SettingsView: View {
     private var general: some View {
         Form {
             Section {
+                Picker("App language", selection: $model.config.appLanguage) {
+                    Text("Use system language").tag("")
+                    ForEach(Languages.ui, id: \.code) { language in
+                        Text(verbatim: language.name).tag(language.code)
+                    }
+                }
+                .onChange(of: model.config.appLanguage) { model.save() }
                 Picker("Primary spoken language", selection: Binding(
                     get: { model.config.asrLanguage ?? "" },
                     set: { model.config.asrLanguage = $0.isEmpty ? nil : $0 }
@@ -117,6 +128,7 @@ struct SettingsView: View {
                 TextEditor(text: $model.config.userProfile)
                     .font(.callout).frame(height: 72)
                     .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(.quaternary))
+                    .accessibilityLabel("Personalization")
             } header: {
                 Text("Personalization")
             } footer: {
@@ -265,7 +277,8 @@ struct SettingsView: View {
                 Picker("Provider", selection: $model.config.cloud.llmProviderID) {
                     ForEach(allLLMProviders) { p in Text(p.displayName).tag(p.id) }
                 }
-                .onChange(of: model.config.cloud.llmProviderID) { newID in
+                .onChange(of: model.config.cloud.llmProviderID) {
+                    let newID = model.config.cloud.llmProviderID
                     // Auto-fill a default model when switching provider, if the current model
                     // isn't in the new provider's list (avoids sending an OpenAI model id to DeepSeek).
                     if let p = allLLMProviders.first(where: { $0.id == newID }) {

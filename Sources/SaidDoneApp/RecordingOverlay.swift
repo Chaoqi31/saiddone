@@ -98,9 +98,18 @@ final class RecordingOverlay {
         model.slowHintMessage = cloudMode
             ? NSLocalizedString("Cloud processing — still working…", comment: "overlay slow cloud")
             : NSLocalizedString("Loading model…", comment: "overlay slow")
+        if let panel {
+            panel.setContentSize(NSSize(width: OverlayView.baseWidth, height: 56))
+            reposition(panel)
+        }
+        announce(model.processingStage)
         // If the pipeline runs long (a cold first-run model load OR a slow cloud roundtrip), say so.
         timer = Timer.scheduledTimer(withTimeInterval: 6.0, repeats: false) { [weak self] _ in
-            Task { @MainActor in if self?.model.processing == true { self?.model.slowHint = true } }
+            Task { @MainActor in
+                guard let self, self.model.processing else { return }
+                self.model.slowHint = true
+                self.announce(self.model.slowHintMessage)
+            }
         }
     }
 
@@ -113,6 +122,7 @@ final class RecordingOverlay {
         model.doneText = message
         let panel = self.panel ?? makePanel()
         self.panel = panel
+        panel.setContentSize(NSSize(width: OverlayView.baseWidth, height: 56))
         reposition(panel)
         panel.orderFrontRegardless()
         announce(message)
@@ -129,6 +139,7 @@ final class RecordingOverlay {
         model.errorText = message
         let panel = self.panel ?? makePanel()
         self.panel = panel
+        panel.setContentSize(NSSize(width: OverlayView.baseWidth, height: 56))
         reposition(panel)
         panel.orderFrontRegardless()
         announce(message)
@@ -157,11 +168,17 @@ final class RecordingOverlay {
     /// Update the deterministic 0…1 pipeline progress bar.
     func updateProcessing(progress: Double, stageKey: String) {
         model.processingProgress = min(1, max(0, progress))
-        model.processingStage = localizedStage(stageKey)
+        let stage = localizedStage(stageKey)
+        if model.processingStage != stage {
+            model.processingStage = stage
+            announce(stage)
+        }
     }
 
     private func localizedStage(_ key: String) -> String {
         switch key {
+        case "preparing":
+            return NSLocalizedString("Preparing engines…", comment: "overlay stage")
         case "transcribing":
             return NSLocalizedString("Transcribing…", comment: "overlay stage")
         case "polishing":
@@ -193,7 +210,7 @@ final class RecordingOverlay {
     }
 
     private func makePanel() -> NSPanel {
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 300, height: 56),
+        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: OverlayView.baseWidth, height: 56),
                             styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
         panel.level = .floating
         panel.isFloatingPanel = true
@@ -216,8 +233,8 @@ final class RecordingOverlay {
 }
 
 private struct OverlayView: View {
-    static let baseWidth: CGFloat = 300
-    static let previewWidth: CGFloat = 440
+    static let baseWidth: CGFloat = 360
+    static let previewWidth: CGFloat = 480
 
     @ObservedObject var model: OverlayModel
 
@@ -252,6 +269,8 @@ private struct OverlayView: View {
                             .progressViewStyle(.linear)
                             .frame(width: 200)
                             .animation(.easeOut(duration: 0.25), value: model.processingProgress)
+                            .accessibilityLabel(model.processingStage)
+                            .accessibilityValue(Text("\(Int(model.processingProgress * 100)) percent"))
                     }
                     Spacer(minLength: 0)
                 }
@@ -259,20 +278,29 @@ private struct OverlayView: View {
                 HStack(spacing: 9) {
                     Circle().fill(.red).frame(width: 8, height: 8)
                         .opacity(model.seconds % 2 == 0 ? 1 : 0.35)
-                    if model.previewText.isEmpty {
-                        waveform.frame(width: 112, height: 28)
-                    } else {
-                        Text(model.previewText).font(.system(size: 11)).lineLimit(2)
-                            .truncationMode(.head)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.label)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                        if model.previewText.isEmpty {
+                            waveform.frame(width: 150, height: 18)
+                        } else {
+                            Text(model.previewText).font(.system(size: 11)).lineLimit(1)
+                                .truncationMode(.head)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
+                    .frame(maxWidth: model.previewText.isEmpty ? 150 : .infinity, alignment: .leading)
                     Text(timeString).font(.system(size: 11, weight: .medium).monospacedDigit())
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 2)
                     Button { model.onFinish?() } label: { Image(systemName: "checkmark") }
                         .help("Finish & insert")
+                        .accessibilityLabel("Finish & insert")
                     Button { model.onCancel?() } label: { Image(systemName: "xmark") }
                         .help("Cancel")
+                        .accessibilityLabel("Cancel recording")
                 }
                 .buttonStyle(.bordered).controlSize(.small)
             }

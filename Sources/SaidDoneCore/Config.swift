@@ -322,16 +322,25 @@ public struct ConfigStore: Sendable {
     }
 
     public func load() -> AppConfig {
+        let fileExists = FileManager.default.fileExists(atPath: url.path)
+        let decoded = loadWithoutSecrets()
+        guard fileExists else { return decoded }
+
+        // Detect migration triggers before hydrate (hydrate deletes the legacy "llmKey" account).
+        let hadLegacyLLMKey = (secrets.get(account: "llmKey")?.isEmpty == false)
+        let hadInlineASRKey = !decoded.cloud.asrKey.isEmpty
+        let hydrated = hydrateSecrets(decoded)
+        // Re-save when migration occurred so the new-shape JSON lands and legacy accounts clear.
+        if hadLegacyLLMKey || hadInlineASRKey { try? save(hydrated) }
+        return hydrated
+    }
+
+    /// Decode the local JSON without touching Keychain. GUI callers use this on the launch thread,
+    /// then hydrate secrets on a background executor so a locked or slow Keychain cannot delay UI.
+    public func loadWithoutSecrets() -> AppConfig {
         guard let data = try? Data(contentsOf: url) else { return .default }   // no file = fresh install
         do {
-            let decoded = try JSONDecoder().decode(AppConfig.self, from: data)
-            // Detect migration triggers before hydrate (hydrate deletes the legacy "llmKey" account).
-            let hadLegacyLLMKey = (secrets.get(account: "llmKey")?.isEmpty == false)
-            let hadInlineASRKey = !decoded.cloud.asrKey.isEmpty
-            let hydrated = hydrateSecrets(decoded)
-            // Re-save when migration occurred so the new-shape JSON lands and legacy accounts clear.
-            if hadLegacyLLMKey || hadInlineASRKey { try? save(hydrated) }
-            return hydrated
+            return try JSONDecoder().decode(AppConfig.self, from: data)
         } catch {
             // A real config existed but couldn't be read — never silently use defaults without a trace.
             // Preserve the file (so the user's settings aren't lost) and log loudly.
@@ -342,18 +351,28 @@ public struct ConfigStore: Sendable {
     }
 
     public func save(_ config: AppConfig) throws {
+        try saveSecrets(config)
+        try saveWithoutSecrets(config)
+    }
+
+    /// Persist non-secret settings without accessing Keychain.
+    public func saveWithoutSecrets(_ config: AppConfig) throws {
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try enc.encode(config).write(to: url, options: .atomic)
+    }
+
+    /// Persist runtime-only credentials. GUI callers run this on a background serial actor.
+    public func saveSecrets(_ config: AppConfig) throws {
         // Per-provider LLM keys → Keychain accounts `cloud-llm:{providerID}`.
         for (providerID, key) in config.cloud.llmAPIKeys {
             try secrets.set(key, account: "cloud-llm:\(providerID)")
         }
         // ASR key (single endpoint).
         try secrets.set(config.cloud.asrKey, account: "asrKey")
-        let enc = JSONEncoder()
-        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try enc.encode(config).write(to: url, options: .atomic)
     }
 
-    private func hydrateSecrets(_ config: AppConfig) -> AppConfig {
+    public func hydrateSecrets(_ config: AppConfig) -> AppConfig {
         var config = config
         let allIDs = Set(CloudProviderRegistry.builtIn.map(\.id) + [config.cloud.llmProviderID])
         let currentID = config.cloud.llmProviderID

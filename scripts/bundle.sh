@@ -34,6 +34,9 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleShortVersionString</key><string>${VER}</string>
   <key>CFBundleVersion</key>          <string>${BUILD}</string>
   <key>LSMinimumSystemVersion</key>   <string>14.0</string>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleLocalizations</key>
+  <array><string>en</string><string>zh-Hans</string></array>
   <key>LSUIElement</key>              <true/>
   <key>NSMicrophoneUsageDescription</key>
   <string>SaidDone transcribes your speech on-device to type for you.</string>
@@ -42,6 +45,13 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 PLIST
 
 ./scripts/make-icon.sh "$APP/Contents/Resources/AppIcon.icns" >/dev/null
+
+# Localizations must be present in lightweight development bundles as well as release bundles;
+# otherwise SwiftUI silently falls back to English and masks catalog regressions during QA.
+for lproj in Resources/*.lproj; do
+  [ -e "$lproj" ] || continue
+  cp -R "$lproj" "$APP/Contents/Resources/"
+done
 
 # Prefer the stable self-signed "SaidDone Dev" identity so macOS persists the Accessibility grant
 # across rebuilds (ad-hoc "-" changes identity every build and re-prompts).

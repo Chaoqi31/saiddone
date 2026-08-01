@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import AVFoundation
 import ApplicationServices
+import SaidDoneCore
 import SaidDoneProviders
 
 /// Onboarding/status: permissions + model readiness, shown in the main window.
@@ -11,6 +12,8 @@ final class SetupModel: ObservableObject {
     @Published var axGranted = false
     @Published var asrReady = false
     @Published var llmReady = false
+    @Published var asrLocal = true
+    @Published var llmLocal = true
     @Published var busy = false
     @Published var status = ""
 
@@ -19,12 +22,22 @@ final class SetupModel: ObservableObject {
     @Published var useMirror = false
     var asrModelID: String = ""
     var llmModelID: String = ""
+    private var cloud = CloudConfig()
     var onPrepare: (() async -> Void)?
     var onDownloadASR: ((@escaping @Sendable (Double) -> Void) async throws -> Void)?
     var onDownloadLLM: ((@escaping @Sendable (Double) -> Void) async throws -> Void)?
     var onSetMirror: ((Bool) -> Void)?
 
     func setMirror(_ on: Bool) { useMirror = on; onSetMirror?(on) }
+
+    func sync(from config: AppConfig) {
+        asrLocal = config.asr.location == .local
+        llmLocal = config.llm.location == .local
+        asrModelID = config.asr.modelID
+        llmModelID = config.llm.modelID
+        cloud = config.cloud
+        refresh()
+    }
 
     func downloadASR() {
         downloadProgress = 0
@@ -55,11 +68,20 @@ final class SetupModel: ObservableObject {
     }
 
     var modelsPath: String {
-        "Speech: \(ModelStorage.whisperCanonicalBase.path(percentEncoded: false)) · "
-            + "AI: \(ModelStorage.mlxModelsRoot.path(percentEncoded: false))"
+        var paths: [String] = []
+        if asrLocal {
+            paths.append("Speech: \(ModelStorage.whisperCanonicalBase.path(percentEncoded: false))")
+        }
+        if llmLocal {
+            paths.append("AI: \(ModelStorage.mlxModelsRoot.path(percentEncoded: false))")
+        }
+        return paths.joined(separator: " · ")
     }
     func revealModelsFolder() {
-        for root in [ModelStorage.whisperCanonicalBase, ModelStorage.mlxModelsRoot] {
+        var roots: [URL] = []
+        if asrLocal { roots.append(ModelStorage.whisperCanonicalBase) }
+        if llmLocal { roots.append(ModelStorage.mlxModelsRoot) }
+        for root in roots {
             try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
             NSWorkspace.shared.open(root)
         }
@@ -68,13 +90,17 @@ final class SetupModel: ObservableObject {
     func refresh() {
         micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
         axGranted = AXIsProcessTrusted()
-        asrReady = ModelStorage.isWhisperReady(modelID: asrModelID)
-        llmReady = ModelStorage.isMLXReady(modelID: llmModelID)
+        asrReady = asrLocal
+            ? ModelStorage.isWhisperReady(modelID: asrModelID)
+            : EngineReadiness.cloudSpeechConfigured(cloud)
+        llmReady = llmLocal
+            ? ModelStorage.isMLXReady(modelID: llmModelID)
+            : EngineReadiness.cloudAIConfigured(cloud)
     }
 
     func prepare() {
         busy = true
-        status = NSLocalizedString("Loading models… (may take 1–2 min on first launch)", comment: "setup status")
+        status = NSLocalizedString("Preparing selected engines…", comment: "setup status")
         Task {
             await onPrepare?()
             busy = false
@@ -95,9 +121,14 @@ struct SetupView: View {
                 row("Microphone", model.micGranted, "Privacy_Microphone")
                 row("Accessibility (paste into apps)", model.axGranted, "Privacy_Accessibility")
             }
-            section("Models (on-device)") {
-                row("Speech (WhisperKit)", model.asrReady, nil)
-                if !model.asrReady {
+            section("Engine readiness") {
+                row(model.asrLocal ? "Speech — Local (WhisperKit)" : "Speech — Cloud",
+                    model.asrReady, nil)
+                if !model.asrLocal, !model.asrReady {
+                    Text("Complete cloud speech settings in the Cloud tab.")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+                if model.asrLocal, !model.asrReady {
                     HStack {
                         Button(model.downloadProgress != nil
                                ? NSLocalizedString("Downloading…", comment: "setup button")
@@ -106,8 +137,17 @@ struct SetupView: View {
                         if let p = model.downloadProgress { ProgressView(value: p).frame(width: 160) }
                     }
                 }
-                row("LLM (\(model.llmModelID.isEmpty ? "local" : model.llmModelID))", model.llmReady, nil)
-                if !model.llmReady {
+                row(model.llmLocal ? "AI — Local" : "AI — Cloud", model.llmReady, nil)
+                if !model.llmLocal, !model.llmReady {
+                    Text("Complete cloud AI settings in the Cloud tab.")
+                        .font(.caption).foregroundStyle(.orange)
+                }
+                if model.llmLocal, !model.llmModelID.isEmpty {
+                    Text(verbatim: model.llmModelID)
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle)
+                }
+                if model.llmLocal, !model.llmReady {
                     HStack {
                         Button(model.llmDownloadProgress != nil
                                ? NSLocalizedString("Downloading…", comment: "setup button")
@@ -116,19 +156,27 @@ struct SetupView: View {
                         if let p = model.llmDownloadProgress { ProgressView(value: p).frame(width: 160) }
                     }
                 }
-                Toggle(NSLocalizedString("Downloads are slow? Use the China mirror (hf-mirror.com)", comment: "setup mirror"),
-                       isOn: Binding(get: { model.useMirror }, set: { model.setMirror($0) }))
-                    .font(.caption)
-                HStack(spacing: 6) {
-                    Image(systemName: "folder")
-                    Text("Saved to \(model.modelsPath)").lineLimit(1).truncationMode(.middle)
-                    Button("Show in Finder") { model.revealModelsFolder() }.buttonStyle(.link)
-                }.font(.caption).foregroundStyle(.secondary)
+                if model.asrLocal || model.llmLocal {
+                    Toggle(NSLocalizedString("Downloads are slow? Use the China mirror (hf-mirror.com)", comment: "setup mirror"),
+                           isOn: Binding(get: { model.useMirror }, set: { model.setMirror($0) }))
+                        .font(.caption)
+                    HStack(spacing: 6) {
+                        Image(systemName: "folder")
+                        Text("Saved to \(model.modelsPath)").lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 8)
+                        Button("Show in Finder") { model.revealModelsFolder() }.buttonStyle(.link)
+                            .fixedSize()
+                    }
+                    .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    Text("Cloud engines do not require model downloads.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             HStack {
                 Button(model.busy
-                       ? NSLocalizedString("Preparing…", comment: "setup button")
-                       : NSLocalizedString("Prepare / Warm models", comment: "setup button")) { model.prepare() }
+                       ? NSLocalizedString("Preparing engines…", comment: "setup button")
+                       : NSLocalizedString("Prepare engines", comment: "setup button")) { model.prepare() }
                     .disabled(model.busy)
                 Button("Refresh") { model.refresh() }
                 if model.busy { ProgressView().controlSize(.small) }

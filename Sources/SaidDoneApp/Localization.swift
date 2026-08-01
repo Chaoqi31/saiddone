@@ -36,13 +36,22 @@ final class LocalizationManager: ObservableObject {
         let resolved = Self.resolve(newCode)
         Self.installBundle(resolved)
         code = resolved
-        UserDefaults.standard.set([resolved], forKey: "AppleLanguages")
+        if newCode.isEmpty {
+            UserDefaults.standard.removeObject(forKey: "AppleLanguages")
+        } else {
+            UserDefaults.standard.set([resolved], forKey: "AppleLanguages")
+        }
     }
 
     /// "" → pick zh-Hans if the system is Chinese, otherwise en. Otherwise honor the override if we ship it.
     private static func resolve(_ override: String) -> String {
         if !override.isEmpty { return shipped(override) }
-        let sys = Locale.preferredLanguages.first ?? "en"
+        // Read the global language list directly. Locale.preferredLanguages also includes this
+        // app's AppleLanguages override, which would make "Use system language" resolve back to
+        // the language the user is trying to stop forcing.
+        let globalLanguages = UserDefaults.standard
+            .persistentDomain(forName: UserDefaults.globalDomain)?["AppleLanguages"] as? [String]
+        let sys = globalLanguages?.first ?? Locale.preferredLanguages.first ?? "en"
         return sys.hasPrefix("zh") ? "zh-Hans" : "en"
     }
 
@@ -59,14 +68,13 @@ final class LocalizationManager: ObservableObject {
     }
 }
 
-/// Wraps a window's root so every `Text` re-resolves when the language changes (the `.id(code)`
-/// forces SwiftUI to rebuild the subtree).
+/// Wraps a window's root so every `Text` re-resolves when the language changes. Updating the locale
+/// invalidates the subtree while preserving navigation and editor state.
 struct LocalizedRoot<Content: View>: View {
     @ObservedObject var localization: LocalizationManager
     @ViewBuilder var content: () -> Content
     var body: some View {
         content()
             .environment(\.locale, localization.locale)
-            .id(localization.code)
     }
 }

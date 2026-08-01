@@ -7,6 +7,14 @@ enum Permissions {
         AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
     }
 
+    static func microphoneDenied() -> Bool {
+        AVCaptureDevice.authorizationStatus(for: .audio) == .denied
+    }
+
+    static func microphoneRestricted() -> Bool {
+        AVCaptureDevice.authorizationStatus(for: .audio) == .restricted
+    }
+
     static func requestMicrophone() async -> Bool {
         await AVCaptureDevice.requestAccess(for: .audio)
     }

@@ -19,6 +19,22 @@ func slog(_ message: String) {
     }
 }
 
+/// Serializes potentially blocking Keychain writes away from the main actor. The JSON settings file
+/// is persisted synchronously first, so ordinary preferences survive even if Keychain is locked.
+private actor ConfigPersistence {
+    let store: ConfigStore
+
+    init(store: ConfigStore) { self.store = store }
+
+    func saveSecrets(_ config: AppConfig) {
+        do {
+            try store.saveSecrets(config)
+        } catch {
+            slog("config secret persistence failed: \(error)")
+        }
+    }
+}
+
 /// Menu-bar controller: owns config, capture, hotkeys, providers; runs the toggle record loop.
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate {
@@ -26,7 +42,10 @@ final class AppController: NSObject, NSApplicationDelegate {
     private let hotkeys = HotkeyManager()
     private let capture = AudioCapture()
     private let configStore: ConfigStore
+    private let configPersistence: ConfigPersistence
     private var config: AppConfig
+    private var configRevision = 0
+    private var secretRevision = 0
     private let localization: LocalizationManager
 
     /// Which Mode is currently recording, nil = idle. Toggle (ADR-0006).
@@ -45,10 +64,9 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     private lazy var setupModel: SetupModel = {
         let m = SetupModel()
-        m.asrModelID = config.asr.modelID
-        m.llmModelID = config.llm.modelID
+        m.sync(from: config)
         m.useMirror = !config.huggingFaceEndpoint.isEmpty
-        m.onPrepare = { [weak self] in await self?.prewarm() }
+        m.onPrepare = { [weak self] in await self?.prepareEngines() }
         m.onDownloadASR = { [weak self] progress in
             guard let self else { return }
             try await ModelDownloader.downloadWhisper(model: self.config.asr.modelID,
@@ -80,11 +98,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private var onboardingTrying = false
     private lazy var onboardingModel: OnboardingModel = {
         let m = OnboardingModel()
-        m.launchAtLogin = config.launchAtLogin
-        m.dictationHotkey = config.dictationHotkey
-        m.translationHotkey = config.translationHotkey
-        m.askHotkey = config.askHotkey
-        m.appLanguage = localization.code
+        m.loadDraft(from: config, effectiveLanguage: localization.code)
         m.onSetLanguage = { [weak self] code in self?.localization.set(code) }
         m.requestMic = { await Permissions.requestMicrophone() }
         m.downloadWhisper = { model, endpoint, progress in
@@ -95,7 +109,7 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
         m.testCloud = { baseURL, key in await Self.testCloudConnection(baseURL: baseURL, key: key) }
         m.applyDraft = { [weak self] in self?.applyOnboardingDraft() }
-        m.warmUp = { [weak self] in await self?.prewarm() }
+        m.warmUp = { [weak self] in await self?.prepareEngines() }
         m.tryToggle = { [weak self] in await self?.onboardingTryToggle() }
         m.finishWizard = { [weak self] in self?.finishOnboarding() }
         return m
@@ -104,9 +118,9 @@ final class AppController: NSObject, NSApplicationDelegate {
     override init() {
         let dir = (try? ConfigStore.defaultDirectory()) ?? FileManager.default.temporaryDirectory
         let store = ConfigStore(directory: dir)
-        var cfg = store.load()
-        _ = EnvLoader.mergeInto(&cfg, store: store)
+        let cfg = store.loadWithoutSecrets()
         self.configStore = store
+        self.configPersistence = ConfigPersistence(store: store)
         self.config = cfg
         self.localization = LocalizationManager(override: cfg.appLanguage)
         self.providerRuntime = ProviderRuntime(config: cfg)
@@ -117,6 +131,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
         setupStatusItem()
+        hydrateSecretsInBackground()
         overlay.model.onFinish = { [weak self] in self?.finishRecording() }
         overlay.model.onCancel = { [weak self] in self?.cancelRecording() }
         historyModel.onLearnTerms = { [weak self] terms in self?.learnTerms(terms) }
@@ -144,8 +159,17 @@ final class AppController: NSObject, NSApplicationDelegate {
             try? await Task.sleep(for: .milliseconds(800))
             scheduleBackgroundPrewarm()
         }
-        // Show the window on launch unless started as a login item (then stay in the background).
-        if !config.launchAtLogin { openMainWindow() }
+        // Registration is a preference, not a launch source. Only the Apple-event login marker
+        // means this particular launch should stay in the background; a manual Dock/Finder launch
+        // must still open the window even when "Launch at login" is enabled.
+        let loginItemLaunch = Self.launchedAsLoginItem()
+        slog("launch source — loginItem=\(loginItemLaunch)")
+        if Self.shouldOpenMainWindow(
+            onboardingCompleted: config.onboardingCompleted,
+            launchedAsLoginItem: loginItemLaunch
+        ) {
+            openMainWindow()
+        }
     }
 
     /// Clicking the app/Dock icon while it's already running re-opens the window.
@@ -156,6 +180,18 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     /// Closing the window keeps the app alive in the menu bar (it's a background dictation tool).
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+
+    static func shouldOpenMainWindow(
+        onboardingCompleted: Bool,
+        launchedAsLoginItem: Bool
+    ) -> Bool {
+        onboardingCompleted && !launchedAsLoginItem
+    }
+
+    private static func launchedAsLoginItem() -> Bool {
+        NSAppleEventManager.shared().currentAppleEvent?
+            .paramDescriptor(forKeyword: AEKeyword(keyAELaunchedAsLogInItem)) != nil
+    }
 
     // MARK: UI
 
@@ -241,6 +277,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         if let win = onboardingWindow {
             win.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true); return
         }
+        if config.onboardingCompleted {
+            onboardingModel.loadDraft(from: config, effectiveLanguage: localization.code)
+        }
         onboardingModel.refreshPermissions()
         onboardingModel.refreshModelReadiness()
         let root = LocalizedRoot(localization: localization) { OnboardingView(model: self.onboardingModel) }
@@ -262,7 +301,9 @@ final class AppController: NSObject, NSApplicationDelegate {
         c.llm = ProviderSelection(location: onboardingModel.llmLocal ? .local : .cloud, modelID: onboardingModel.llmModelID)
         c.cloud = onboardingModel.cloud
         c.huggingFaceEndpoint = onboardingModel.endpoint
-        c.appLanguage = onboardingModel.appLanguage
+        c.appLanguage = onboardingModel.appLanguageOverride(
+            preserving: config.appLanguage,
+            onboardingCompleted: config.onboardingCompleted)
         c.dictationHotkey = onboardingModel.dictationHotkey
         c.translationHotkey = onboardingModel.translationHotkey
         c.askHotkey = onboardingModel.askHotkey
@@ -334,7 +375,8 @@ final class AppController: NSObject, NSApplicationDelegate {
     /// Dictionary changes are read live at dictation time, so just persist — no provider rebuild.
     private func saveDictionary(_ entries: [DictionaryEntry]) {
         config.dictionary.entries = entries
-        try? configStore.save(config)
+        configRevision += 1
+        persistConfig(config)
         configModel.config = config   // keep the Settings editor in sync
     }
 
@@ -350,11 +392,16 @@ final class AppController: NSObject, NSApplicationDelegate {
 
     /// Persist edited config and rebuild providers so changes take effect immediately.
     private func applyConfig(_ newConfig: AppConfig) {
+        let languageChanged = newConfig.appLanguage != config.appLanguage
+        let secretsChanged = newConfig.cloud.llmAPIKeys != config.cloud.llmAPIKeys
+            || newConfig.cloud.asrKey != config.cloud.asrKey
         config = newConfig
-        try? configStore.save(newConfig)
+        configRevision += 1
+        if secretsChanged { secretRevision += 1 }
+        persistConfig(newConfig, includeSecrets: secretsChanged)
+        if languageChanged { localization.set(newConfig.appLanguage) }
         let replacements = providerRuntime.apply(newConfig)
-        setupModel.asrModelID = newConfig.asr.modelID
-        setupModel.llmModelID = newConfig.llm.modelID
+        setupModel.sync(from: newConfig)
         dictionaryModel.entries = newConfig.dictionary.entries
         LoginItem.apply(newConfig.launchAtLogin)
         hotkeys.unregisterAll()
@@ -362,6 +409,76 @@ final class AppController: NSObject, NSApplicationDelegate {
         refreshUI()
         if replacements != .none {
             slog("providers replaced — ASR=\(replacements.asr) LLM=\(replacements.llm)")
+        }
+    }
+
+    /// Decode-first startup keeps UI responsive; secrets and optional `.env` hydration happen away
+    /// from the main actor. If the user edits settings before hydration completes, their newer state
+    /// wins and the late result is discarded.
+    private func hydrateSecretsInBackground() {
+        let store = configStore
+        let baseConfig = config
+        let expectedConfigRevision = configRevision
+        let expectedSecretRevision = secretRevision
+        let hadInlineASRKey = !baseConfig.cloud.asrKey.isEmpty
+        Task.detached(priority: .userInitiated) { [weak self] in
+            var hydrated = store.hydrateSecrets(baseConfig)
+            let environmentChanged = EnvLoader.mergeInto(&hydrated)
+            await self?.installHydratedConfig(
+                hydrated,
+                expectedConfigRevision: expectedConfigRevision,
+                expectedSecretRevision: expectedSecretRevision,
+                environmentChanged: environmentChanged,
+                hadInlineASRKey: hadInlineASRKey)
+        }
+    }
+
+    private func installHydratedConfig(
+        _ hydrated: AppConfig,
+        expectedConfigRevision: Int,
+        expectedSecretRevision: Int,
+        environmentChanged: Bool,
+        hadInlineASRKey: Bool
+    ) {
+        guard secretRevision == expectedSecretRevision else {
+            slog("secret hydration skipped — credentials changed while Keychain was loading")
+            return
+        }
+        let ordinarySettingsUnchanged = configRevision == expectedConfigRevision
+        let merged = ordinarySettingsUnchanged && environmentChanged
+            ? hydrated
+            : ConfigHydration.mergeSecrets(from: hydrated, into: config)
+        config = merged
+        let replacements = providerRuntime.apply(merged)
+        setupModel.sync(from: merged)
+        if mainWindow != nil { configModel.config = merged }
+        if onboardingWindow != nil {
+            for (id, key) in merged.cloud.llmAPIKeys
+            where onboardingModel.cloud.llmAPIKeys[id, default: ""].isEmpty {
+                onboardingModel.cloud.llmAPIKeys[id] = key
+            }
+            if onboardingModel.cloud.asrKey.isEmpty {
+                onboardingModel.cloud.asrKey = merged.cloud.asrKey
+            }
+        }
+        if (environmentChanged && ordinarySettingsUnchanged) || hadInlineASRKey {
+            try? configStore.saveWithoutSecrets(merged)
+        }
+        if environmentChanged {
+            Task { await configPersistence.saveSecrets(merged) }
+        }
+        refreshUI()
+        slog("cloud secrets hydrated — providers replaced ASR=\(replacements.asr) LLM=\(replacements.llm)")
+    }
+
+    private func persistConfig(_ value: AppConfig, includeSecrets: Bool = false) {
+        do {
+            try configStore.saveWithoutSecrets(value)
+        } catch {
+            slog("config persistence failed: \(error)")
+        }
+        if includeSecrets {
+            Task { await configPersistence.saveSecrets(value) }
         }
     }
 
@@ -379,9 +496,9 @@ final class AppController: NSObject, NSApplicationDelegate {
             warming.isEnabled = false
             menu.addItem(warming)
         }
-        if missingLocalModelMessage() != nil {
-            menu.addItem(menuItem(NSLocalizedString("Model not downloaded — open Setup", comment: "menu"),
-                                  #selector(openMainWindow), symbol: "exclamationmark.triangle.fill"))
+        if let issue = recordingAvailabilityIssue() {
+            menu.addItem(menuItem(issue.menuMessage, #selector(openMainWindow),
+                                  symbol: "exclamationmark.triangle.fill"))
         }
         if let hotkeyWarning {
             menu.addItem(menuItem(hotkeyWarning, #selector(openMainWindow), symbol: "keyboard"))
@@ -464,6 +581,13 @@ final class AppController: NSObject, NSApplicationDelegate {
             await self?.prewarm()
             self?.prewarmTask = nil
         }
+    }
+
+    /// Start a tracked warm-up and wait for it. Setup/onboarding use this path so a recording that
+    /// finishes concurrently can wait for the same task instead of touching a provider mid-warm-up.
+    private func prepareEngines() async {
+        scheduleBackgroundPrewarm()
+        await prewarmTask?.value
     }
 
     /// Warm local models into memory so the first dictation isn't a mystery wait. Cloud engines skip.
@@ -593,7 +717,10 @@ final class AppController: NSObject, NSApplicationDelegate {
         case .switchMode(let newMode):
             switchRecordingMode(to: newMode)
         case .start(let newMode):
-            if let msg = missingLocalModelMessage() { overlay.showError(msg); return }
+            if let issue = recordingAvailabilityIssue() {
+                overlay.showError(issue.message)
+                return
+            }
             startRecording(newMode)
         }
     }
@@ -625,7 +752,11 @@ final class AppController: NSObject, NSApplicationDelegate {
         func loc(_ l: ProviderLocation) -> String {
             l == .local ? NSLocalizedString("Local", comment: "engine location") : NSLocalizedString("Cloud", comment: "engine location")
         }
-        let ai = config.llm.location == .local ? Self.shortLLMName(config.llm.modelID) : NSLocalizedString("Cloud", comment: "engine location")
+        let ai: String = {
+            if config.llm.location == .local { return Self.shortLLMName(config.llm.modelID) }
+            return CloudProviderRegistry.builtIn.first { $0.id == config.cloud.llmProviderID }?.displayName
+                ?? NSLocalizedString("Cloud", comment: "engine location")
+        }()
         return String(format: NSLocalizedString("Speech: %@ · AI: %@", comment: "menu engine summary"),
                       loc(config.asr.location), ai)
     }
@@ -637,30 +768,16 @@ final class AppController: NSObject, NSApplicationDelegate {
           .replacingOccurrences(of: "-", with: " ")
     }
 
-    /// If a stage is set to a local engine whose model isn't on disk, an actionable message; else nil.
-    private func missingLocalModelMessage() -> String? {
-        if config.asr.location == .local,
-           !ModelStorage.isWhisperReady(modelID: config.asr.modelID) {
-            return NSLocalizedString("Speech model not downloaded — open Settings → Setup.", comment: "missing model")
-        }
-        if config.llm.location == .local {
-            if !ModelStorage.isMLXReady(modelID: config.llm.modelID) {
-                return NSLocalizedString("AI model not downloaded — open Settings → Setup.", comment: "missing model")
-            }
-        }
-        return nil
+    private func recordingAvailabilityIssue() -> EngineReadinessIssue? {
+        EngineReadiness.issue(
+            for: config,
+            asrModelReady: ModelStorage.isWhisperReady(modelID: config.asr.modelID),
+            llmModelReady: ModelStorage.isMLXReady(modelID: config.llm.modelID))
     }
 
     private func startRecording(_ mode: Mode) {
-        if isPrewarming {
-            Task { @MainActor in
-                overlay.show(label: NSLocalizedString("Loading models…", comment: "prewarm wait overlay"))
-                await prewarmTask?.value
-                guard activeMode == nil else { return }
-                beginCapture(mode)
-            }
-            return
-        }
+        // Model warm-up is independent of microphone capture. Start listening immediately so words
+        // spoken while a model is loading are never discarded; processing waits below if necessary.
         beginCapture(mode)
     }
 
@@ -683,8 +800,25 @@ final class AppController: NSObject, NSApplicationDelegate {
         } catch {
             capture.onLevel = nil
             slog("capture.start failed: \(error)")
-            NSSound.beep()
+            overlay.showError(Self.friendlyCaptureError(
+                error, microphoneAuthorized: Permissions.microphoneAuthorized()))
         }
+    }
+
+    static func friendlyCaptureError(_ error: Error, microphoneAuthorized: Bool) -> String {
+        if !microphoneAuthorized {
+            return NSLocalizedString(
+                "Microphone access is unavailable — enable SaidDone in System Settings → Privacy & Security → Microphone.",
+                comment: "capture permission error")
+        }
+        if error is CaptureError {
+            return NSLocalizedString(
+                "No working microphone input was found — check your input device and try again.",
+                comment: "capture input error")
+        }
+        return NSLocalizedString(
+            "Couldn't start recording — check your microphone input and try again.",
+            comment: "capture start error")
     }
 
     /// Calm, user-facing message for a pipeline failure (technical detail stays in the log).
@@ -757,10 +891,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         let askSelection = askSelectionSnapshot ?? ""
         askSelectionSnapshot = nil
 
-        // No budget while models are still cold-loading — a first-launch load isn't a hung polish.
+        // If background warm-up is still running, retain the captured audio and wait before asking
+        // the same provider to transcribe. A first-launch load is not counted against the AI budget.
+        let prewarmToAwait = prewarmTask
         let orch = PipelineOrchestrator(
             asr: asr, llm: llm, dictionary: config.dictionary,
-            llmTimeout: isPrewarming ? nil : llmTimeoutBudget(for: audio),
+            llmTimeout: prewarmToAwait == nil ? llmTimeoutBudget(for: audio) : nil,
             onProgress: { [weak self] progress, stage in
                 Task { @MainActor in self?.overlay.updateProcessing(progress: progress, stageKey: stage) }
             },
@@ -777,7 +913,11 @@ final class AppController: NSObject, NSApplicationDelegate {
             askSelection: askSelection,
             fastDraftEnabled: config.fastInsertBeforePolish,
             voiceCommandsEnabled: config.voiceCommandsEnabled)
-        Task { @MainActor [mode, audio, orch, options] in
+        Task { @MainActor [mode, audio, orch, options, prewarmToAwait] in
+            if let prewarmToAwait {
+                self.overlay.updateProcessing(progress: 0, stageKey: "preparing")
+                await prewarmToAwait.value
+            }
             await self.runPipeline(mode: mode, audio: audio, orch: orch, options: options)
         }
     }
