@@ -44,6 +44,14 @@ final class PrivacyAndHotkeyTests: XCTestCase {
         XCTAssertTrue(source.contains("cancelPendingPasteboardRestore"))
     }
 
+    func testFastDraftIsNotInsertedWhenTargetCannotBeSafelyReplaced() throws {
+        let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        let source = try String(contentsOf: root.appendingPathComponent("Sources/SaidDoneApp/InsertionService.swift"))
+
+        XCTAssertTrue(source.contains("guard let target = replaceableFastDraftTarget(for: text) else"))
+        XCTAssertTrue(source.contains("AXUIElementIsAttributeSettable"))
+    }
+
     func testDuplicateHotkeysAreReported() {
         var config = AppConfig.default
         config.translationHotkey = config.dictationHotkey

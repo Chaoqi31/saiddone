@@ -51,13 +51,30 @@ enum InsertionService {
     /// Insert a draft and retain the exact Accessibility target required for a safe final swap.
     static func insertFastDraft(_ text: String, autoCopy: Bool = false) -> Bool {
         fastDraftTarget = nil
-        let target = focusedElement().flatMap { element -> FastDraftTarget? in
-            guard let processID = processID(of: element) else { return nil }
-            return FastDraftTarget(element: element, processID: processID, draft: text)
+        guard let target = replaceableFastDraftTarget(for: text) else {
+            // Some apps (notably terminal and web-based editors) accept ⌘V but do not expose a
+            // readable/writable AXValue. Inserting a draft there would leave us with no safe way
+            // to swap in the polished result, so let the pipeline insert only the final text.
+            slog("fast draft skipped — focused field cannot be safely replaced")
+            return false
         }
         guard insert(text, autoCopy: autoCopy) else { return false }
         fastDraftTarget = target
         return true
+    }
+
+    /// A fast draft is useful only when the same Accessibility element can later prove that the
+    /// exact draft is still present and can replace it. Preflight that contract before inserting.
+    private static func replaceableFastDraftTarget(for draft: String) -> FastDraftTarget? {
+        guard let element = focusedElement(),
+              let processID = processID(of: element),
+              axString(element, kAXValueAttribute as CFString) != nil else { return nil }
+
+        let canReplaceSelection = isSettable(element, kAXSelectedTextRangeAttribute as CFString)
+            && isSettable(element, kAXSelectedTextAttribute as CFString)
+        let canReplaceValue = isSettable(element, kAXValueAttribute as CFString)
+        guard canReplaceSelection || canReplaceValue else { return nil }
+        return FastDraftTarget(element: element, processID: processID, draft: draft)
     }
 
     private static func synthesizeCommandV() { synthesizeCmd(CGKeyCode(kVK_ANSI_V)) }
@@ -172,6 +189,12 @@ enum InsertionService {
         var obj: AnyObject?
         guard AXUIElementCopyAttributeValue(element, attr, &obj) == .success else { return nil }
         return obj as? String
+    }
+
+    private static func isSettable(_ element: AXUIElement, _ attr: CFString) -> Bool {
+        var settable = DarwinBoolean(false)
+        return AXUIElementIsAttributeSettable(element, attr, &settable) == .success
+            && settable.boolValue
     }
 
     private static func synthesizeCmd(_ key: CGKeyCode) {
