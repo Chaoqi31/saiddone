@@ -60,10 +60,12 @@ public struct CloudConfig: Codable, Sendable, Equatable {
     /// Settings edits this map; `ConfigStore.save` writes each to `cloud-llm:{providerID}`.
     public var llmAPIKeys: [String: String] = [:]
 
-    // ASR — single OpenAI-compatible endpoint, unchanged.
+    // ASR — single OpenAI-compatible endpoint, unchanged. `asrAppID` is only used by Volcengine.
     public var asrKey: String = ""
     public var asrBaseURL: String = "https://api.openai.com/v1"
     public var asrModel: String = "gpt-4o-transcribe"
+    /// Volcengine APP ID (numeric). Ignored by OpenAI-compatible endpoints.
+    public var asrAppID: String = ""
 
     /// Optional HTTP proxy for cloud calls (helps when behind a restrictive network). Empty = none.
     public var proxyHost: String = ""
@@ -72,7 +74,7 @@ public struct CloudConfig: Codable, Sendable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case llmProviderID, llmBaseURL, llmModel
-        case asrKey, asrBaseURL, asrModel, proxyHost, proxyPort
+        case asrKey, asrBaseURL, asrModel, asrAppID, proxyHost, proxyPort
     }
 
     /// Lenient decode with migration from the old single-provider shape.
@@ -91,6 +93,7 @@ public struct CloudConfig: Codable, Sendable, Equatable {
         asrKey = try c.decodeIfPresent(String.self, forKey: .asrKey) ?? ""
         asrBaseURL = try c.decodeIfPresent(String.self, forKey: .asrBaseURL) ?? "https://api.openai.com/v1"
         asrModel = try c.decodeIfPresent(String.self, forKey: .asrModel) ?? "gpt-4o-transcribe"
+        asrAppID = try c.decodeIfPresent(String.self, forKey: .asrAppID) ?? ""
         proxyHost = try c.decodeIfPresent(String.self, forKey: .proxyHost) ?? ""
         proxyPort = try c.decodeIfPresent(Int.self, forKey: .proxyPort) ?? 0
         llmAPIKeys = [:]   // always hydrated from Keychain at load
@@ -103,6 +106,7 @@ public struct CloudConfig: Codable, Sendable, Equatable {
         try c.encode(llmModel, forKey: .llmModel)
         try c.encode(asrBaseURL, forKey: .asrBaseURL)
         try c.encode(asrModel, forKey: .asrModel)
+        try c.encode(asrAppID, forKey: .asrAppID)
         try c.encode(proxyHost, forKey: .proxyHost)
         try c.encode(proxyPort, forKey: .proxyPort)
         // llmAPIKeys + asrKey intentionally NOT encoded — Keychain only.

@@ -71,6 +71,38 @@ final class ConfigModel: ObservableObject {
 struct SettingsView: View {
     @ObservedObject var model: ConfigModel
     @ObservedObject var setup: SetupModel
+    @State private var storageStats = ""
+    @State private var confirmingClearHistory = false
+
+    private var storageDirectory: URL {
+        (try? ConfigStore.defaultDirectory()) ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("SaidDone", isDirectory: true)
+    }
+
+    private func refreshStorageStats() {
+        let dir = storageDirectory
+        Task {
+            let repo = HistoryRepository(directory: dir)
+            let count = (await repo.recent(Int.max)).count
+            let fm = FileManager.default
+            var audioBytes = 0
+            if let files = try? fm.contentsOfDirectory(at: dir.appendingPathComponent("audio", isDirectory: true),
+                                                      includingPropertiesForKeys: [.fileSizeKey]) {
+                for f in files { audioBytes += (try? f.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0 }
+            }
+            let jsonlBytes = (try? fm.attributesOfItem(atPath: dir.appendingPathComponent("history.jsonl").path)[.size] as? Int) ?? 0
+            let fmt = ByteCountFormatter()
+            storageStats = "\(count) entries · audio \(fmt.string(fromByteCount: Int64(audioBytes))) · history \(fmt.string(fromByteCount: Int64(jsonlBytes)))"
+        }
+    }
+
+    private func clearHistory() {
+        let dir = storageDirectory
+        Task {
+            _ = await HistoryRepository(directory: dir).clear()
+            refreshStorageStats()
+        }
+    }
 
     var body: some View {
         TabView {
@@ -156,6 +188,28 @@ struct SettingsView: View {
                     }
                 }
                 .help("If polishing takes longer than this, fail with a timeout error instead of inserting the raw transcript. 0 = wait forever. Cloud mode auto-extends the budget for longer speech.")
+            }
+
+            Section {
+                HStack {
+                    Text(verbatim: storageDirectory.path)
+                        .font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                    Spacer()
+                    Button("Show in Finder") { NSWorkspace.shared.open(storageDirectory) }
+                }
+                Text(storageStats.isEmpty ? "…" : storageStats)
+                    .font(.callout).foregroundStyle(.secondary)
+                Button("Clear All History…", role: .destructive) { confirmingClearHistory = true }
+            } header: {
+                Text("History storage")
+            } footer: {
+                Text("Transcripts (raw + polished, history.jsonl) and audio recordings (audio/) are stored locally in this folder. Per-entry delete: History tab → context menu.")
+            }
+            .onAppear { refreshStorageStats() }
+            .confirmationDialog("Clear all history?", isPresented: $confirmingClearHistory, titleVisibility: .visible) {
+                Button("Clear all history", role: .destructive) { clearHistory() }
+            } message: {
+                Text("This permanently deletes every saved transcript and its audio recording.")
             }
 
             Section {
@@ -304,13 +358,14 @@ struct SettingsView: View {
                 Text("Built-in presets can be edited by changing the Base URL/model.")
             }
             Section {
-                RevealableAPIKeyField(label: "API key", text: $model.config.cloud.asrKey)
+                RevealableAPIKeyField(label: "API key / Access Token", text: $model.config.cloud.asrKey)
                 TextField("Base URL", text: $model.config.cloud.asrBaseURL)
                 TextField("Model", text: $model.config.cloud.asrModel)
+                TextField("App ID (Volcengine only)", text: $model.config.cloud.asrAppID)
             } header: {
                 Text("ASR — speech (OpenAI-compatible)")
             } footer: {
-                Text("Examples: gpt-4o-mini-transcribe (fast), gpt-4o-transcribe (accurate), whisper-1. SiliconFlow SenseVoice also works.")
+                Text("Examples: gpt-4o-mini-transcribe (fast), gpt-4o-transcribe (accurate), whisper-1. SiliconFlow SenseVoice also works. Volcengine: Base URL https://openspeech.bytedance.com, Model volc.bigasr.auc_turbo, plus its APP ID.")
             }
             Section {
                 TextField("Host", text: $model.config.cloud.proxyHost)

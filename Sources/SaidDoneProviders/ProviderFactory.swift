@@ -11,6 +11,14 @@ public enum ProviderFactory {
             return WhisperKitASRProvider(model: config.asr.modelID)
         case .cloud:
             let url = URL(string: config.cloud.asrBaseURL) ?? URL(string: "https://api.openai.com/v1")!
+            // Volcengine uses its own protocol (JSON + base64 WAV), not OpenAI multipart.
+            if url.host?.contains("bytedance") == true {
+                let resource = config.cloud.asrModel.isEmpty ? "volc.bigasr.auc_turbo" : config.cloud.asrModel
+                return VolcengineASRProvider(appID: config.cloud.asrAppID,
+                                             accessToken: config.cloud.asrKey,
+                                             resourceID: resource,
+                                             session: session(config.cloud))
+            }
             return CloudASRProvider(apiKey: config.cloud.asrKey, baseURL: url, model: config.cloud.asrModel,
                                     session: session(config.cloud))
         }
