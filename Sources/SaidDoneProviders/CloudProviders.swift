@@ -114,7 +114,7 @@ public struct CloudLLMProvider: LLMProvider {
                 ["role": "system", "content": system],
                 ["role": "user", "content": user],
             ],
-            "temperature": 0.2,
+            "temperature": 0,
             // Thinking off for polish/translate/ask — light cleanup needs no CoT.
             "thinking": ["type": thinkingEnabled ? "enabled" : "disabled"],
         ]

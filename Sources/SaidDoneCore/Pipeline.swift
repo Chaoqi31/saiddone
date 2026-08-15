@@ -149,15 +149,25 @@ public struct PipelineOrchestrator: Sendable {
 
     /// Polish under the latency budget: timeout is a hard error, never silently fall back to the
     /// unpolished transcript — the user explicitly wants polished output or a visible failure.
+    /// One retry on empty output: cloud models (deepseek-flash non-thinking) occasionally return
+    /// "" for real speech; retrying beats showing the user an unpolished transcript.
     private func polishWithBudget(_ text: String, context: PolishContext) async throws -> String {
-        guard let rawPolished = try await withBudget({ try await llm.polish(text, context: context) }) else {
-            throw ProviderError.latencyBudgetExceeded
+        var polished = try await polishAttempt(text, context: context)
+        if polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !PolishOutput.acceptsEmpty(for: text) {
+            polished = try await polishAttempt(text, context: context)
         }
-        let polished = PolishOutput.normalize(rawPolished, source: text)
         if polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return PolishOutput.acceptsEmpty(for: text) ? "" : text
         }
         return polished
+    }
+
+    private func polishAttempt(_ text: String, context: PolishContext) async throws -> String {
+        guard let rawPolished = try await withBudget({ try await llm.polish(text, context: context) }) else {
+            throw ProviderError.latencyBudgetExceeded
+        }
+        return PolishOutput.normalize(rawPolished, source: text)
     }
 
     /// Run `op` racing the budget. Returns nil on timeout; no budget = just run `op`.
