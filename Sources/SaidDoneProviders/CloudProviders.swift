@@ -97,11 +97,6 @@ public struct CloudLLMProvider: LLMProvider {
     }
 
     private func chat(system: String, user: String, maxTokens: Int? = nil) async throws -> String {
-        try await chat(system: system, user: user, maxTokens: maxTokens, thinkingEnabled: false)
-    }
-
-    private func chat(system: String, user: String, maxTokens: Int? = nil,
-                      thinkingEnabled: Bool) async throws -> String {
         guard !apiKey.isEmpty else { throw ProviderError.notConfigured("cloud LLM API key missing") }
         var req = URLRequest(url: baseURL.appendingPathComponent("chat/completions"))
         req.httpMethod = "POST"
@@ -116,7 +111,7 @@ public struct CloudLLMProvider: LLMProvider {
             ],
             "temperature": 0,
             // Thinking off for polish/translate/ask — light cleanup needs no CoT.
-            "thinking": ["type": thinkingEnabled ? "enabled" : "disabled"],
+            "thinking": ["type": "disabled"],
         ]
         if let maxTokens { body["max_tokens"] = maxTokens }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)

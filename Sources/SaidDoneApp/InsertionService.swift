@@ -20,6 +20,7 @@ enum InsertionService {
     static func insert(_ text: String, autoCopy: Bool = false) -> Bool {
         guard !text.isEmpty else { return true }
         cancelPendingPasteboardRestore()
+        CorrectionWatcher.shared.stop()   // a new insert supersedes any pending correction watch
         let trusted = AXIsProcessTrustedWithOptions([
             "AXTrustedCheckOptionPrompt": true
         ] as CFDictionary)
@@ -33,6 +34,10 @@ enum InsertionService {
             return false
         }
 
+        // Capture the target now — after the paste it stays the focused element to watch for fixes.
+        let target = focusedElement()
+        let targetPID = target.flatMap { processID(of: $0) }
+
         let pasteboard = NSPasteboard.general
         let saved = PasteboardSnapshot(pasteboard)
 
@@ -40,6 +45,10 @@ enum InsertionService {
         pasteboard.setString(text, forType: .string)
         synthesizeCommandV()
         slog("insert: ⌘V posted")
+
+        if let target, let targetPID {
+            CorrectionWatcher.shared.watch(element: target, pid: targetPID, insertedText: text)
+        }
 
         // Restore after the paste is delivered (longer delay avoids racing the paste).
         // autoCopy = leave the inserted text on the clipboard instead of restoring.
@@ -98,6 +107,7 @@ enum InsertionService {
            CFEqual(current, target.element),
            tryReplaceSuffix(in: current, previous: previous, with: text) {
             slog("replace: AX suffix swap ok")
+            CorrectionWatcher.shared.watch(element: current, pid: target.processID, insertedText: text)
             if autoCopy {
                 cancelPendingPasteboardRestore()
                 NSPasteboard.general.clearContents()

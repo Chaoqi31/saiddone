@@ -36,8 +36,4 @@ enum Languages {
         ("en", "English"),
         ("zh-Hans", "中文（简体）"),
     ]
-
-    static func translationName(_ code: String) -> String {
-        translationTargets.first { $0.code == code }?.name ?? code
-    }
 }

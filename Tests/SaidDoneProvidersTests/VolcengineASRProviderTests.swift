@@ -57,27 +57,6 @@ final class VolcengineASRProviderTests: XCTestCase {
         XCTAssertEqual(text, "nested")
     }
 
-    func testSubmitQueryFlowPollsUntilDone() async throws {
-        // Sequence: submit (ok, empty) → query (processing) → query (done, text).
-        let responses: [(Int, String, String)] = [
-            (200, "20000000", "{}"),
-            (200, "20000001", #"{"result":{"text":""}}"#),
-            (200, "20000000", #"{"result":{"text":"你好 world"}}"#),
-        ]
-        var call = 0
-        VolcASRMockProtocol.handler = { req in
-            let (status, code, body) = responses[min(call, responses.count - 1)]
-            call += 1
-            XCTAssertTrue(req.url!.path.contains("submit") || req.url!.path.contains("query"))
-            return (status, ["X-Api-Status-Code": code], Data(body.utf8))
-        }
-        let p = VolcengineASRProvider(appID: "123", accessToken: "tok",
-                                      resourceID: "volc.seedasr.auc", session: makeSession())
-        let text = try await p.transcribe(audio, languageHint: nil)
-        XCTAssertEqual(text, "你好 world")
-        XCTAssertEqual(call, 3)
-    }
-
     func testSilenceReturnsEmptyNotError() async throws {
         // Flash resource so silence short-circuits on the single call.
         VolcASRMockProtocol.handler = { _ in

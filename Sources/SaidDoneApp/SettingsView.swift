@@ -43,28 +43,6 @@ final class ConfigModel: ObservableObject {
         save()
     }
 
-    func exportDictionary() {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "saiddone-dictionary.json"
-        panel.allowedContentTypes = [.json]
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let enc = JSONEncoder()
-        enc.outputFormatting = [.prettyPrinted]
-        try? enc.encode(config.dictionary.entries).write(to: url)
-    }
-
-    func importDictionary() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.json]
-        guard panel.runModal() == .OK, let url = panel.url,
-              let data = try? Data(contentsOf: url),
-              let entries = try? JSONDecoder().decode([DictionaryEntry].self, from: data) else { return }
-        // Merge, de-duplicating by `wrong`.
-        var byKey = Dictionary(config.dictionary.entries.map { ($0.wrong, $0) }) { a, _ in a }
-        for e in entries { byKey[e.wrong] = e }
-        config.dictionary.entries = byKey.values.sorted { $0.wrong < $1.wrong }
-        save()
-    }
 }
 
 /// Minimal v1 Settings: target language, provider location/model, Custom Dictionary, App Profiles.
@@ -82,8 +60,9 @@ struct SettingsView: View {
     private func refreshStorageStats() {
         let dir = storageDirectory
         Task {
-            let repo = HistoryRepository(directory: dir)
-            let count = (await repo.recent(Int.max)).count
+            let count = (try? Data(contentsOf: dir.appendingPathComponent("history.jsonl"))).map {
+                String(decoding: $0, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: true).count
+            } ?? 0
             let fm = FileManager.default
             var audioBytes = 0
             if let files = try? fm.contentsOfDirectory(at: dir.appendingPathComponent("audio", isDirectory: true),
@@ -176,6 +155,8 @@ struct SettingsView: View {
                 Toggle("Voice commands (say “换行” / “new line” to break lines)", isOn: $model.config.voiceCommandsEnabled)
                 Toggle("Insert draft immediately, then polish in place", isOn: $model.config.fastInsertBeforePolish)
                     .help("Shows the raw transcript right after you stop, then swaps in the polished version (⌘Z + paste). Dictation only.")
+                Toggle("Learn dictionary words from my fixes", isOn: $model.config.correctionLearningEnabled)
+                    .help("After inserting, watch the field briefly — if you fix a misheard word right away, it's added to the dictionary automatically.")
                 HStack {
                     Text("AI step timeout")
                     Spacer()

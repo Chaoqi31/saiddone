@@ -135,6 +135,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         overlay.model.onFinish = { [weak self] in self?.finishRecording() }
         overlay.model.onCancel = { [weak self] in self?.cancelRecording() }
         historyModel.onLearnTerms = { [weak self] terms in self?.learnTerms(terms) }
+        CorrectionWatcher.shared.onLearned = { [weak self] terms in
+            guard let self else { return }
+            self.learnTerms(terms)
+            let pairs = terms.map { "\($0.wrong) → \($0.right)" }.joined(separator: ", ")
+            self.overlay.showDone(NSLocalizedString("Learned \(pairs)", comment: "auto-learned dictionary terms toast"))
+        }
         historyModel.onReinsert = { [weak self] text in
             guard let self else { return }
             if !InsertionService.insert(text, autoCopy: self.config.autoCopyToClipboard) {
@@ -552,8 +558,6 @@ final class AppController: NSObject, NSApplicationDelegate {
         statusItem.button?.alphaValue = 1.0
     }
 
-    private func updateStatusIcon() { refreshUI() }
-
     /// Stop capture and discard — instant mic release, no pipeline.
     @objc private func cancelRecording() {
         guard activeMode != nil else { return }
@@ -641,15 +645,16 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func withTimeout(_ seconds: TimeInterval,
                              operation: @MainActor @escaping () async -> Void) async -> Bool {
         await withCheckedContinuation { continuation in
-            let gate = PrewarmResumeGate(continuation)
-            Task { @MainActor in
+            let gate = RaceGate()
+            let work = Task { @MainActor in
                 await operation()
-                gate.resume(true)
+                gate.finish { continuation.resume(returning: true) }
             }
-            Task {
+            let timer = Task {
                 try? await Task.sleep(for: .seconds(seconds))
-                gate.resume(false)
+                gate.finish { continuation.resume(returning: false) }
             }
+            gate.setTasks([work, timer])
         }
     }
 
@@ -784,6 +789,7 @@ final class AppController: NSObject, NSApplicationDelegate {
     private func beginCapture(_ mode: Mode) {
         capture.onLevel = { [weak self] lvl in DispatchQueue.main.async { self?.overlay.updateLevel(lvl) } }
         capture.preferBuiltInMic = config.preferBuiltInMic
+        CorrectionWatcher.enabled = config.correctionLearningEnabled
         do {
             try capture.start()
             activeMode = mode
@@ -885,7 +891,7 @@ final class AppController: NSObject, NSApplicationDelegate {
 
         // Resolve App Profile tone from the foreground app (where text will land).
         let bundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        var context = config.appProfiles.context(bundleID: bundleID, url: nil)
+        var context = config.appProfiles.context(bundleID: bundleID)
         context.userProfile = config.userProfile.isEmpty ? nil : config.userProfile
         context.spokenLanguage = config.asrLanguage
         let askSelection = askSelectionSnapshot ?? ""
@@ -1005,19 +1011,3 @@ final class AppController: NSObject, NSApplicationDelegate {
     }
 }
 
-/// Ensures a prewarm timeout continuation resumes at most once.
-private final class PrewarmResumeGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var resumed = false
-    private let continuation: CheckedContinuation<Bool, Never>
-
-    init(_ continuation: CheckedContinuation<Bool, Never>) { self.continuation = continuation }
-
-    func resume(_ value: Bool) {
-        lock.withLock {
-            guard !resumed else { return }
-            resumed = true
-            continuation.resume(returning: value)
-        }
-    }
-}

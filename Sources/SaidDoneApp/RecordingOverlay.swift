@@ -4,7 +4,6 @@ import SwiftUI
 /// Live state + actions for the recording overlay.
 @MainActor
 final class OverlayModel: ObservableObject {
-    @Published var level: Float = 0
     @Published var levels: [Float] = Array(repeating: 0, count: 30)
     @Published var seconds: Int = 0
     @Published var label: String = "Recording"
@@ -15,7 +14,6 @@ final class OverlayModel: ObservableObject {
     @Published var slowHintMessage = ""      // what to say when slowHint fires — set by showProcessing
     @Published var errorText: String?
     @Published var doneText: String?
-    @Published var previewText = ""
     var onFinish: (() -> Void)?
     var onCancel: (() -> Void)?
 
@@ -45,15 +43,14 @@ final class OverlayModel: ObservableObject {
         }
         // Envelope follower already smoothed the signal; just gate + map + push.
         let bar = Self.visualLevel(v, floor: meterNoiseFloor!)
-        level = bar
         levels.removeFirst()
         levels.append(bar)
     }
     func reset() {
         meterNoiseFloor = nil
         meterCalibrating = []
-        level = 0; seconds = 0; processing = false; processingProgress = 0; processingStage = ""
-        slowHint = false; slowHintMessage = ""; errorText = nil; doneText = nil; previewText = ""
+        seconds = 0; processing = false; processingProgress = 0; processingStage = ""
+        slowHint = false; slowHintMessage = ""; errorText = nil; doneText = nil
         levels = Array(repeating: 0, count: 30)
     }
 }
@@ -118,7 +115,6 @@ final class RecordingOverlay {
         timer?.invalidate(); timer = nil
         model.processing = false
         model.errorText = nil
-        model.previewText = ""
         model.doneText = message
         let panel = self.panel ?? makePanel()
         self.panel = panel
@@ -135,7 +131,6 @@ final class RecordingOverlay {
     func showError(_ message: String) {
         timer?.invalidate(); timer = nil
         model.processing = false
-        model.previewText = ""
         model.errorText = message
         let panel = self.panel ?? makePanel()
         self.panel = panel
@@ -153,7 +148,6 @@ final class RecordingOverlay {
         model.processing = false
         model.errorText = nil
         model.doneText = nil
-        model.previewText = ""
         panel?.orderOut(nil)
     }
 
@@ -183,21 +177,12 @@ final class RecordingOverlay {
             return NSLocalizedString("Transcribing…", comment: "overlay stage")
         case "polishing":
             return NSLocalizedString("Polishing…", comment: "overlay stage")
-        case "rewriting", "asking":
+        case "asking":
             return NSLocalizedString("Thinking…", comment: "overlay stage")
         case "done":
             return NSLocalizedString("Inserting…", comment: "overlay stage")
         default:
             return NSLocalizedString("Processing…", comment: "overlay processing")
-        }
-    }
-
-    func updatePreview(_ text: String) {
-        model.previewText = text
-        // Live preview needs room to read — widen the panel once text starts arriving.
-        if let panel, !text.isEmpty, panel.frame.width != OverlayView.previewWidth {
-            panel.setContentSize(NSSize(width: OverlayView.previewWidth, height: panel.frame.height))
-            reposition(panel)
         }
     }
 
@@ -234,7 +219,6 @@ final class RecordingOverlay {
 
 private struct OverlayView: View {
     static let baseWidth: CGFloat = 360
-    static let previewWidth: CGFloat = 480
 
     @ObservedObject var model: OverlayModel
 
@@ -283,15 +267,9 @@ private struct OverlayView: View {
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
-                        if model.previewText.isEmpty {
-                            waveform.frame(width: 150, height: 18)
-                        } else {
-                            Text(model.previewText).font(.system(size: 11)).lineLimit(1)
-                                .truncationMode(.head)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
+                        waveform.frame(width: 150, height: 18)
                     }
-                    .frame(maxWidth: model.previewText.isEmpty ? 150 : .infinity, alignment: .leading)
+                    .frame(maxWidth: 150, alignment: .leading)
                     Text(timeString).font(.system(size: 11, weight: .medium).monospacedDigit())
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 2)
@@ -306,7 +284,7 @@ private struct OverlayView: View {
             }
         }
         .padding(.horizontal, 14)
-        .frame(width: model.previewText.isEmpty ? Self.baseWidth : Self.previewWidth, height: 56)
+        .frame(width: Self.baseWidth, height: 56)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.white.opacity(0.12)))
     }

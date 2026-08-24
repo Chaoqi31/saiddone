@@ -174,7 +174,7 @@ public struct PipelineOrchestrator: Sendable {
     /// The losing task is cancelled (providers that can't observe cancellation finish in the background).
     private func withBudget(_ op: @escaping @Sendable () async throws -> String) async throws -> String? {
         guard let budget = llmTimeout, budget > 0 else { return try await op() }
-        let state = BudgetRaceState()
+        let state = RaceGate()
         return try await withCheckedThrowingContinuation { continuation in
             let work = Task {
                 do {
@@ -193,12 +193,16 @@ public struct PipelineOrchestrator: Sendable {
     }
 }
 
-private final class BudgetRaceState: @unchecked Sendable {
+/// Resume-once gate for racing tasks that may not observe cancellation
+/// (losers are cancelled; uncancellable ops finish in the background).
+public final class RaceGate: @unchecked Sendable {
+    public init() {}
+
     private let lock = NSLock()
     private var finished = false
     private var tasks: [Task<Void, Never>] = []
 
-    func setTasks(_ tasks: [Task<Void, Never>]) {
+    public func setTasks(_ tasks: [Task<Void, Never>]) {
         lock.lock()
         if finished {
             lock.unlock()
@@ -209,7 +213,7 @@ private final class BudgetRaceState: @unchecked Sendable {
         }
     }
 
-    func finish(_ resume: () -> Void) {
+    public func finish(_ resume: () -> Void) {
         lock.lock()
         guard !finished else { lock.unlock(); return }
         finished = true

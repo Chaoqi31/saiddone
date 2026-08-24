@@ -2,15 +2,13 @@ import Foundation
 import SaidDoneCore
 
 /// Volcengine (Doubao) "录音文件识别大模型 — 极速版" ASR: one synchronous JSON request with
-/// base64 WAV audio, no submit/query polling (clips ≤ 2h). Selected by ProviderFactory when the
+/// base64 WAV audio (clips ≤ 2h). Selected by ProviderFactory when the
 /// cloud ASR base URL points at openspeech.bytedance.com. Audio leaves the device (GOALS disclosure).
 public struct VolcengineASRProvider: ASRProvider {
     public let id: String
     public let location: ProviderLocation = .cloud
 
     static let flashURL = URL(string: "https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash")!
-    static let submitURL = URL(string: "https://openspeech.bytedance.com/api/v3/auc/bigmodel/submit")!
-    static let queryURL = URL(string: "https://openspeech.bytedance.com/api/v3/auc/bigmodel/query")!
     /// X-Api-Status-Code "no speech detected" — not an error, just silence.
     static let silenceCode = "20000003"
     static let okCode = "20000000"
@@ -35,23 +33,8 @@ public struct VolcengineASRProvider: ASRProvider {
             throw ProviderError.notConfigured("Volcengine ASR: APP ID / Access Token missing")
         }
         let requestID = UUID().uuidString
-        // 极速版 (`volc.bigasr.auc_turbo`) = single synchronous flash call;
-        // 标准版 (`volc.seedasr.auc`) = submit + poll query with the same request id.
-        if resourceID.contains("_turbo") {
-            let (data, _) = try await run(Self.flashURL, requestID: requestID, body: body(audio))
-            return try Self.text(from: data)
-        }
-        _ = try await run(Self.submitURL, requestID: requestID, body: body(audio))
-        let deadline = Date().addingTimeInterval(55)
-        while Date() < deadline {
-            try Task.checkCancellation()
-            try? await Task.sleep(for: .milliseconds(400))
-            let (data, done) = try await run(Self.queryURL, requestID: requestID, body: [:])
-            if done, let text = try? Self.text(from: data) {
-                return text   // empty once the job finishes on silent audio
-            }
-        }
-        throw ProviderError.latencyBudgetExceeded
+        let data = try await run(Self.flashURL, requestID: requestID, body: body(audio))
+        return try Self.text(from: data)
     }
 
     private func body(_ audio: AudioSamples) -> [String: Any] {
@@ -70,9 +53,8 @@ public struct VolcengineASRProvider: ASRProvider {
         ]
     }
 
-    /// Executes one API call. Returns `(body, terminal)` — `terminal` false means the job is still
-    /// processing (query flow) and the caller should poll again.
-    private func run(_ url: URL, requestID: String, body: [String: Any]) async throws -> (Data, Bool) {
+    /// Executes one synchronous API call and returns the response body.
+    private func run(_ url: URL, requestID: String, body: [String: Any]) async throws -> Data {
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.timeoutInterval = 60
@@ -101,14 +83,12 @@ public struct VolcengineASRProvider: ASRProvider {
         // is represented downstream as an empty `result.text` so callers see "" instead of an error.
         let status = http.value(forHTTPHeaderField: "X-Api-Status-Code") ?? Self.okCode
         // Silence ("no speech") is terminal, represented downstream as empty `result.text`.
-        if status == Self.silenceCode { return (Data(#"{"result":{"text":""}}"#.utf8), true) }
-        // Processing/queued (query flow) — caller keeps polling; the body has no text yet.
-        if status == "20000001" || status == "20000002" { return (Data(#"{"result":{"text":""}}"#.utf8), false) }
+        if status == Self.silenceCode { return Data(#"{"result":{"text":""}}"#.utf8) }
         guard status == Self.okCode else {
             let message = http.value(forHTTPHeaderField: "X-Api-Message") ?? status
             throw ProviderError.modelUnavailable("Volcengine ASR: \(message)")
         }
-        return (data, true)
+        return data
     }
 
     /// Tolerant parse: observed shapes are `{"result":{"text":…}}` and `{"data":{"result":{"text":…}}}`.

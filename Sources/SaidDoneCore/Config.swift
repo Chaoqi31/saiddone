@@ -16,22 +16,6 @@ public struct Hotkey: Codable, Sendable, Equatable, Hashable {
         self.modifiers = modifiers
         self.mouseButton = mouseButton
     }
-
-    enum CodingKeys: String, CodingKey { case keyCode, modifiers, mouseButton }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        keyCode = try c.decode(UInt32.self, forKey: .keyCode)
-        modifiers = try c.decode(UInt.self, forKey: .modifiers)
-        mouseButton = try c.decodeIfPresent(Int.self, forKey: .mouseButton)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(keyCode, forKey: .keyCode)
-        try c.encode(modifiers, forKey: .modifiers)
-        try c.encodeIfPresent(mouseButton, forKey: .mouseButton)
-    }
 }
 
 /// Which Provider to use for a stage, and (if local) which model id.
@@ -194,6 +178,9 @@ public struct AppConfig: Codable, Sendable {
     /// doesn't force AirPods from hi-fi A2DP down to muffled narrowband HFP. Off by default (uses the
     /// system input you'd expect); opt in to avoid any playback degradation while recording.
     public var preferBuiltInMic: Bool
+    /// After inserting text, watch the target field briefly: if the user fixes a word right away,
+    /// learn the correction into the Custom Dictionary automatically (Typeless-style).
+    public var correctionLearningEnabled: Bool
     /// Opt-in cloud endpoints (used when a provider's location is .cloud and a key is set).
     public var cloud: CloudConfig
     /// Personalization: the user's background/profession/jargon, fed to the Polish LLM (like
@@ -225,6 +212,7 @@ public struct AppConfig: Codable, Sendable {
         voiceCommandsEnabled: Bool = false,
         llmTimeoutSeconds: Double = 8,
         preferBuiltInMic: Bool = false,
+        correctionLearningEnabled: Bool = true,
         cloud: CloudConfig = .init(),
         userProfile: String = "",
         onboardingCompleted: Bool = false,
@@ -243,6 +231,7 @@ public struct AppConfig: Codable, Sendable {
         self.voiceCommandsEnabled = voiceCommandsEnabled
         self.llmTimeoutSeconds = llmTimeoutSeconds
         self.preferBuiltInMic = preferBuiltInMic
+        self.correctionLearningEnabled = correctionLearningEnabled
         self.cloud = cloud
         self.userProfile = userProfile
         self.dictationHotkey = dictationHotkey
@@ -262,7 +251,7 @@ public struct AppConfig: Codable, Sendable {
         case dictationHotkey, translationHotkey, askHotkey
         case targetLanguage, asrLanguage, asr, llm, dictionary, appProfiles
         case launchAtLogin, autoCopyToClipboard, soundsEnabled, muteAudioWhileRecording
-        case voiceCommandsEnabled, llmTimeoutSeconds, preferBuiltInMic
+        case voiceCommandsEnabled, llmTimeoutSeconds, preferBuiltInMic, correctionLearningEnabled
         case cloud, userProfile, onboardingCompleted, huggingFaceEndpoint, appLanguage
         case fastInsertBeforePolish
     }
@@ -289,6 +278,7 @@ public struct AppConfig: Codable, Sendable {
         voiceCommandsEnabled = try c.decodeIfPresent(Bool.self, forKey: .voiceCommandsEnabled) ?? false
         llmTimeoutSeconds = try c.decodeIfPresent(Double.self, forKey: .llmTimeoutSeconds) ?? 8
         preferBuiltInMic = try c.decodeIfPresent(Bool.self, forKey: .preferBuiltInMic) ?? false
+        correctionLearningEnabled = try c.decodeIfPresent(Bool.self, forKey: .correctionLearningEnabled) ?? true
         cloud = try c.decodeIfPresent(CloudConfig.self, forKey: .cloud) ?? .init()
         userProfile = try c.decodeIfPresent(String.self, forKey: .userProfile) ?? ""
         onboardingCompleted = try c.decodeIfPresent(Bool.self, forKey: .onboardingCompleted) ?? false

@@ -46,10 +46,6 @@ final class AudioCapture: @unchecked Sendable {
         }
     }
 
-    func snapshot() -> AudioSamples {
-        AudioSamples(samples: lock.withLock { collected })
-    }
-
     /// Stop and return everything captured as 16 kHz mono. Fully releases the engine.
     func stop() -> AudioSamples {
         let samples = lock.withLock { collected }

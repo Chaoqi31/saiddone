@@ -33,18 +33,9 @@ final class AppProfileTests: XCTestCase {
         let store = AppProfileStore(profiles: [
             .init(bundleID: nil, tonePrompt: "neutral"),
             .init(bundleID: "com.tinyspeck.slackmacgap", tonePrompt: "casual"),
-            .init(bundleID: "com.tinyspeck.slackmacgap", urlContains: "x", tonePrompt: "specific"),
         ])
-        XCTAssertEqual(store.context(bundleID: "com.tinyspeck.slackmacgap", url: nil).tonePrompt, "casual")
-        XCTAssertEqual(store.context(bundleID: "com.apple.mail", url: nil).tonePrompt, "neutral")
-    }
-
-    func testURLMatch() {
-        let store = AppProfileStore(profiles: [
-            .init(bundleID: "com.google.Chrome", urlContains: "github.com", tonePrompt: "technical"),
-        ])
-        XCTAssertEqual(store.context(bundleID: "com.google.Chrome", url: "https://github.com/x").tonePrompt, "technical")
-        XCTAssertNil(store.context(bundleID: "com.google.Chrome", url: "https://news.com").tonePrompt)
+        XCTAssertEqual(store.context(bundleID: "com.tinyspeck.slackmacgap").tonePrompt, "casual")
+        XCTAssertEqual(store.context(bundleID: "com.apple.mail").tonePrompt, "neutral")
     }
 }
 

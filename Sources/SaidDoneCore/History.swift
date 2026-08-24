@@ -25,34 +25,6 @@ public struct HistoryEntry: Codable, Identifiable, Sendable, Equatable {
         self.elapsed = elapsed
         self.polishSkipped = polishSkipped
     }
-
-    enum CodingKeys: String, CodingKey {
-        case id, date, mode, raw, text, audioFile, elapsed, polishSkipped
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(UUID.self, forKey: .id)
-        date = try c.decode(Date.self, forKey: .date)
-        mode = try c.decode(String.self, forKey: .mode)
-        raw = try c.decode(String.self, forKey: .raw)
-        text = try c.decode(String.self, forKey: .text)
-        audioFile = try c.decodeIfPresent(String.self, forKey: .audioFile)
-        elapsed = try c.decodeIfPresent(Double.self, forKey: .elapsed)
-        polishSkipped = try c.decodeIfPresent(Bool.self, forKey: .polishSkipped)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(id, forKey: .id)
-        try c.encode(date, forKey: .date)
-        try c.encode(mode, forKey: .mode)
-        try c.encode(raw, forKey: .raw)
-        try c.encode(text, forKey: .text)
-        try c.encodeIfPresent(audioFile, forKey: .audioFile)
-        try c.encodeIfPresent(elapsed, forKey: .elapsed)
-        try c.encodeIfPresent(polishSkipped, forKey: .polishSkipped)
-    }
 }
 
 /// Append-only history at ~/Library/Application Support/SaidDone/history.jsonl.
