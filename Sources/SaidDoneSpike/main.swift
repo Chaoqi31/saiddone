@@ -1,11 +1,11 @@
 import Foundation
-import AVFoundation
+@preconcurrency import AVFoundation
 import MLX
 import SaidDoneCore
 import SaidDoneProviders
 
 setvbuf(stdout, nil, _IONBF, 0)
-if ProcessInfo.processInfo.environment["MLX_FORCE_CPU"] == "1" { Device.setDefault(device: Device(.cpu)) }
+let forceCPU = ProcessInfo.processInfo.environment["MLX_FORCE_CPU"] == "1"
 
 // Each arg = "path|mode|lang" (mode: dictate|translate). Providers loaded once, then all clips run.
 func loadAudio(_ path: String) throws -> AudioSamples {
@@ -19,8 +19,8 @@ func loadAudio(_ path: String) throws -> AudioSamples {
     try file.read(into: input)
     let outCap = AVAudioFrameCount(Double(input.frameLength) * target.sampleRate / file.processingFormat.sampleRate) + 4096
     guard let out = AVAudioPCMBuffer(pcmFormat: target, frameCapacity: outCap) else { throw NSError(domain: "spike", code: 2) }
-    var fed = false; var err: NSError?
-    converter.convert(to: out, error: &err) { _, status in
+    nonisolated(unsafe) var fed = false; var err: NSError?
+    converter.convert(to: out, error: &err) { @Sendable _, status in
         if fed { status.pointee = .endOfStream; return nil }
         fed = true; status.pointee = .haveData; return input
     }
@@ -40,24 +40,32 @@ if let m = ProcessInfo.processInfo.environment["SAIDDONE_LLM"] { cfg.llm.modelID
 if let l = ProcessInfo.processInfo.environment["SAIDDONE_ASR_LANG"] { cfg.asrLanguage = (l == "auto") ? nil : l }
 let orch = PipelineOrchestrator(asr: ProviderFactory.makeASR(cfg), llm: ProviderFactory.makeLLM(cfg))
 
-for spec in specs {
-    let parts = spec.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
-    let path = parts[0]
-    let modeStr = parts.count > 1 ? parts[1] : "dictate"
-    let lang = parts.count > 2 ? parts[2] : "en"
-    let mode: Mode = modeStr == "translate" ? .translation(target: lang) : .dictation
-    do {
-        let audio = try loadAudio(path)
-        let t0 = Date()
-        let r = try await orch.run(
-            audio, mode: mode,
-            options: PipelineOptions(languageHint: cfg.asrLanguage))
-        let dt = Date().timeIntervalSince(t0)
-        let name = (path as NSString).lastPathComponent
-        print("### \(name)  [\(modeStr)\(modeStr == "translate" ? "->\(lang)" : "")]  \(String(format: "%.1f", audio.duration))s audio  \(String(format: "%.2f", dt))s pipe")
-        print("RAW:   \(r.rawTranscript)")
-        print("FINAL: \(r.text)\n")
-    } catch {
-        print("### \(path): ERROR \(error)\n")
+func runAll() async {
+    for spec in specs {
+        let parts = spec.split(separator: "|", omittingEmptySubsequences: false).map(String.init)
+        let path = parts[0]
+        let modeStr = parts.count > 1 ? parts[1] : "dictate"
+        let lang = parts.count > 2 ? parts[2] : "en"
+        let mode: Mode = modeStr == "translate" ? .translation(target: lang) : .dictation
+        do {
+            let audio = try loadAudio(path)
+            let t0 = Date()
+            let r = try await orch.run(
+                audio, mode: mode,
+                options: PipelineOptions(languageHint: cfg.asrLanguage))
+            let dt = Date().timeIntervalSince(t0)
+            let name = (path as NSString).lastPathComponent
+            print("### \(name)  [\(modeStr)\(modeStr == "translate" ? "->\(lang)" : "")]  \(String(format: "%.1f", audio.duration))s audio  \(String(format: "%.2f", dt))s pipe")
+            print("RAW:   \(r.rawTranscript)")
+            print("FINAL: \(r.text)\n")
+        } catch {
+            print("### \(path): ERROR \(error)\n")
+        }
     }
+}
+
+if forceCPU {
+    await Device.withDefaultDevice(Device(.cpu)) { await runAll() }
+} else {
+    await runAll()
 }
