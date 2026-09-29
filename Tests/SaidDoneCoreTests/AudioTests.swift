@@ -1,42 +1,43 @@
-import XCTest
+import Foundation
+import Testing
 @testable import SaidDoneCore
 
-final class AudioTests: XCTestCase {
-    func testWavDataHeaderAndSize() {
+struct AudioTests {
+    @Test func wavDataHeaderAndSize() {
         let a = AudioSamples(samples: [0, 0.5, -0.5, 1, -1], sampleRate: 16000)
         let d = a.wavData()
-        XCTAssertEqual(d.count, 44 + 5 * 2)  // 44-byte header + 5 × Int16
-        XCTAssertEqual(String(data: d.prefix(4), encoding: .ascii), "RIFF")
-        XCTAssertEqual(String(data: d.subdata(in: 8..<12), encoding: .ascii), "WAVE")
-        XCTAssertEqual(String(data: d.subdata(in: 36..<40), encoding: .ascii), "data")
+        #expect(d.count == (44 + 5 * 2))  // 44-byte header + 5 × Int16
+        #expect((String(data: d.prefix(4), encoding: .ascii)) == "RIFF")
+        #expect((String(data: d.subdata(in: 8..<12), encoding: .ascii)) == "WAVE")
+        #expect((String(data: d.subdata(in: 36..<40), encoding: .ascii)) == "data")
     }
 
-    func testDurationAndShortFlag() {
-        XCTAssertEqual(AudioSamples(samples: [Float](repeating: 0, count: 16000)).duration, 1, accuracy: 0.001)
-        XCTAssertTrue(AudioSamples(samples: [Float](repeating: 0, count: 16000 * 10)).isShortUtterance)
-        XCTAssertFalse(AudioSamples(samples: [Float](repeating: 0, count: 16000 * 20)).isShortUtterance)
+    @Test func durationAndShortFlag() {
+        #expect(abs(AudioSamples(samples: [Float](repeating: 0, count: 16000)).duration - 1) < 0.001)
+        #expect(AudioSamples(samples: [Float](repeating: 0, count: 16000 * 10)).isShortUtterance)
+        #expect(!(AudioSamples(samples: [Float](repeating: 0, count: 16000 * 20)).isShortUtterance))
     }
 
-    func testTrimsLeadingTrailingSilence() {
+    @Test func trimsLeadingTrailingSilence() {
         var s = [Float](repeating: 0, count: 16_000)      // 1s silence
         s += [Float](repeating: 0.5, count: 8_000)        // 0.5s speech
         s += [Float](repeating: 0, count: 16_000)         // 1s silence
         let trimmed = AudioSamples(samples: s, sampleRate: 16_000).trimmedSilence()
-        XCTAssertLessThan(trimmed.duration, 1.0)
-        XCTAssertGreaterThan(trimmed.duration, 0.4)
+        #expect(trimmed.duration < 1.0)
+        #expect(trimmed.duration > 0.4)
     }
 
-    func testAllSilenceUntouched() {
+    @Test func allSilenceUntouched() {
         let a = AudioSamples(samples: [Float](repeating: 0, count: 1000), sampleRate: 16_000)
-        XCTAssertEqual(a.trimmedSilence().samples.count, 1000)
+        #expect((a.trimmedSilence().samples.count) == 1000)
     }
 
-    func testPeakRMSUsesWindowedMaxNotWholeBufferAverage() {
+    @Test func peakRMSUsesWindowedMaxNotWholeBufferAverage() {
         var s = [Float](repeating: 0, count: 16_000)      // 1s silence
         s += [Float](repeating: 0.05, count: 800)         // 50ms quiet speech
         s += [Float](repeating: 0, count: 16_000)
         let peak = AudioSamples(samples: s, sampleRate: 16_000).peakRMS
-        XCTAssertGreaterThan(peak, 0.04)
-        XCTAssertLessThan(peak, 0.06)
+        #expect(peak > 0.04)
+        #expect(peak < 0.06)
     }
 }

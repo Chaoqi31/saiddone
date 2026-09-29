@@ -1,10 +1,11 @@
-import XCTest
+import Foundation
+import Testing
 @testable import SaidDoneCore
 
-final class ConfigDecodeTests: XCTestCase {
+struct ConfigDecodeTests {
     /// A config.json written before `proxyHost`/`proxyPort` existed must still decode (not silently
     /// reset to the local default — that bug once knocked a cloud DeepSeek setup back to local).
-    func testDecodesCloudConfigMissingNewerFields() throws {
+    @Test func decodesCloudConfigMissingNewerFields() throws {
         let json = """
         {
           "dictationHotkey": {"keyCode": 2, "modifiers": 786432},
@@ -15,14 +16,14 @@ final class ConfigDecodeTests: XCTestCase {
         }
         """.data(using: .utf8)!
         let cfg = try JSONDecoder().decode(AppConfig.self, from: json)
-        XCTAssertEqual(cfg.llm.location, .cloud)                  // NOT reset to default local
-        XCTAssertEqual(cfg.cloud.llmBaseURL, "https://api.deepseek.com")
-        XCTAssertEqual(cfg.cloud.llmModel, "deepseek-v4-flash")
-        XCTAssertEqual(cfg.cloud.proxyPort, 0)                    // missing field -> default
+        #expect(cfg.llm.location == .cloud)                  // NOT reset to default local
+        #expect(cfg.cloud.llmBaseURL == "https://api.deepseek.com")
+        #expect(cfg.cloud.llmModel == "deepseek-v4-flash")
+        #expect(cfg.cloud.proxyPort == 0)                    // missing field -> default
     }
 
     /// Onboarding/mirror fields added in v0.9.0 must default when absent from an older config.json.
-    func testNewFieldsDefaultWhenAbsent() throws {
+    @Test func newFieldsDefaultWhenAbsent() throws {
         let json = """
         {
           "dictationHotkey": {"keyCode": 2, "modifiers": 786432},
@@ -32,11 +33,11 @@ final class ConfigDecodeTests: XCTestCase {
         }
         """.data(using: .utf8)!
         let cfg = try JSONDecoder().decode(AppConfig.self, from: json)
-        XCTAssertFalse(cfg.onboardingCompleted)
-        XCTAssertEqual(cfg.huggingFaceEndpoint, "")
+        #expect(!cfg.onboardingCompleted)
+        #expect(cfg.huggingFaceEndpoint == "")
     }
 
-    func testConfigStorePersistsCloudKeysOutsideJSON() throws {
+    @Test func configStorePersistsCloudKeysOutsideJSON() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -55,13 +56,13 @@ final class ConfigDecodeTests: XCTestCase {
         try store.save(cfg)
 
         let json = try String(contentsOf: store.url, encoding: .utf8)
-        XCTAssertFalse(json.contains("llm-secret"))
-        XCTAssertFalse(json.contains("asr-secret"))
-        XCTAssertEqual(store.load().cloud.llmAPIKeys["openai"], "llm-secret")
-        XCTAssertEqual(store.load().cloud.asrKey, "asr-secret")
+        #expect(!(json.contains("llm-secret")))
+        #expect(!(json.contains("asr-secret")))
+        #expect((store.load().cloud.llmAPIKeys["openai"]) == "llm-secret")
+        #expect((store.load().cloud.asrKey) == "asr-secret")
     }
 
-    func testLoadWithoutSecretsLeavesRuntimeKeysEmpty() throws {
+    @Test func loadWithoutSecretsLeavesRuntimeKeysEmpty() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -77,8 +78,8 @@ final class ConfigDecodeTests: XCTestCase {
         try store.saveWithoutSecrets(cfg)
         let decoded = store.loadWithoutSecrets()
 
-        XCTAssertEqual(decoded.cloud.llmAPIKeys, [:])
-        XCTAssertTrue(decoded.cloud.asrKey.isEmpty)
-        XCTAssertEqual(decoded.cloud.llmProviderID, "openai")
+        #expect(decoded.cloud.llmAPIKeys == ([:]))
+        #expect(decoded.cloud.asrKey.isEmpty)
+        #expect(decoded.cloud.llmProviderID == "openai")
     }
 }

@@ -1,20 +1,21 @@
-import XCTest
+import Foundation
+import Testing
 @testable import SaidDoneCore
 
-final class DictionaryLearningTests: XCTestCase {
-    func testSingleTermSwap() {
+struct DictionaryLearningTests {
+    @Test func singleTermSwap() {
         let t = DictionaryLearning.diffTerms(old: "deploy 到 Verso", new: "deploy 到 Vercel")
-        XCTAssertEqual(t, [DictionaryEntry(wrong: "Verso", right: "Vercel")])
+        #expect(t == ([DictionaryEntry(wrong: "Verso", right: "Vercel")]))
     }
-    func testTwoTermSwap() {
+    @Test func twoTermSwap() {
         let t = DictionaryLearning.diffTerms(old: "push 到 man 用 Verso", new: "push 到 main 用 Vercel")
-        XCTAssertEqual(t, [.init(wrong: "man", right: "main"), .init(wrong: "Verso", right: "Vercel")])
+        #expect(t == ([.init(wrong: "man", right: "main"), .init(wrong: "Verso", right: "Vercel")]))
     }
-    func testNoLatinChange() {
-        XCTAssertTrue(DictionaryLearning.diffTerms(old: "今天开会", new: "明天开会").isEmpty)
+    @Test func noLatinChange() {
+        #expect(DictionaryLearning.diffTerms(old: "今天开会", new: "明天开会").isEmpty)
     }
-    func testUnbalancedReturnsEmpty() {
+    @Test func unbalancedReturnsEmpty() {
         // counts differ -> don't guess
-        XCTAssertTrue(DictionaryLearning.diffTerms(old: "use Verso", new: "use Vercel now Extra").isEmpty)
+        #expect(DictionaryLearning.diffTerms(old: "use Verso", new: "use Vercel now Extra").isEmpty)
     }
 }

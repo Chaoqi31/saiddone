@@ -1,9 +1,10 @@
 import Foundation
-import XCTest
+import Testing
 import SaidDoneCore
 @testable import SaidDoneApp
 
-final class LocalizationTests: XCTestCase {
+@MainActor
+struct LocalizationTests {
     private var repositoryRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -15,11 +16,10 @@ final class LocalizationTests: XCTestCase {
         let url = repositoryRoot
             .appendingPathComponent("Resources/zh-Hans.lproj/Localizable.strings")
         let data = try Data(contentsOf: url)
-        return try XCTUnwrap(
-            PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String])
+        return try #require(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String])
     }
 
-    func testCriticalProductFlowCopyHasSimplifiedChineseTranslations() throws {
+    @Test func criticalProductFlowCopyHasSimplifiedChineseTranslations() throws {
         let catalog = try simplifiedChineseCatalog()
         let keys = [
             "Press a hotkey once to start, speak, then press it again to stop and insert.",
@@ -47,36 +47,35 @@ final class LocalizationTests: XCTestCase {
         ]
 
         for key in keys {
-            let translation = try XCTUnwrap(catalog[key], "Missing zh-Hans translation for: \(key)")
-            XCTAssertNotEqual(translation, key, "Untranslated zh-Hans key: \(key)")
+            let translation = try #require(catalog[key], "Missing zh-Hans translation for: \(key)")
+            #expect(translation != key, "Untranslated zh-Hans key: \(key)")
         }
     }
 
-    func testReusableOnboardingCopyKeepsLocalizedStringKeyTypes() throws {
+    @Test func reusableOnboardingCopyKeepsLocalizedStringKeyTypes() throws {
         let source = try String(contentsOf: repositoryRoot
             .appendingPathComponent("Sources/SaidDoneApp/Onboarding.swift"))
 
-        XCTAssertTrue(source.contains(
+        #expect(source.contains(
             "private func bullet(_ symbol: String, _ text: LocalizedStringKey)"))
-        XCTAssertTrue(source.contains(
+        #expect(source.contains(
             "static let asrModels: [(LocalizedStringKey, String)]"))
-        XCTAssertTrue(source.contains(
+        #expect(source.contains(
             "static let llmModels: [(LocalizedStringKey, String)]"))
     }
 
-    func testMicrophoneUsageDescriptionIsLocalized() throws {
+    @Test func microphoneUsageDescriptionIsLocalized() throws {
         let url = repositoryRoot
             .appendingPathComponent("Resources/zh-Hans.lproj/InfoPlist.strings")
         let data = try Data(contentsOf: url)
-        let catalog = try XCTUnwrap(
-            PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String])
+        let catalog = try #require(PropertyListSerialization.propertyList(from: data, format: nil) as? [String: String])
 
-        let value = try XCTUnwrap(catalog["NSMicrophoneUsageDescription"])
-        XCTAssertTrue(value.contains("麦克风"))
+        let value = try #require(catalog["NSMicrophoneUsageDescription"])
+        #expect(value.contains("麦克风"))
     }
 
-    @MainActor
-    func testReopenedOnboardingPreservesSystemLanguageAndCurrentProviders() {
+    @Test @MainActor
+    func reopenedOnboardingPreservesSystemLanguageAndCurrentProviders() {
         var config = AppConfig.default
         config.onboardingCompleted = true
         config.appLanguage = ""
@@ -87,18 +86,16 @@ final class LocalizationTests: XCTestCase {
         let model = OnboardingModel()
         model.loadDraft(from: config, effectiveLanguage: "zh-Hans")
 
-        XCTAssertEqual(model.appLanguage, "zh-Hans")
-        XCTAssertFalse(model.languageWasChosen)
-        XCTAssertEqual(
-            model.appLanguageOverride(preserving: config.appLanguage, onboardingCompleted: true), "")
-        XCTAssertTrue(model.asrLocal)
-        XCTAssertEqual(model.asrModelID, "speech-model")
-        XCTAssertFalse(model.llmLocal)
-        XCTAssertEqual(model.cloud.llmBaseURL, "https://example.invalid/v1")
+        #expect(model.appLanguage == "zh-Hans")
+        #expect(!model.languageWasChosen)
+        #expect((model.appLanguageOverride(preserving: config.appLanguage, onboardingCompleted: true)) == "")
+        #expect(model.asrLocal)
+        #expect(model.asrModelID == "speech-model")
+        #expect(!model.llmLocal)
+        #expect(model.cloud.llmBaseURL == "https://example.invalid/v1")
 
         model.chooseLanguage("en")
-        XCTAssertTrue(model.languageWasChosen)
-        XCTAssertEqual(
-            model.appLanguageOverride(preserving: config.appLanguage, onboardingCompleted: true), "en")
+        #expect(model.languageWasChosen)
+        #expect((model.appLanguageOverride(preserving: config.appLanguage, onboardingCompleted: true)) == "en")
     }
 }

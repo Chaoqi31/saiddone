@@ -1,10 +1,12 @@
-import XCTest
+import Foundation
+import Testing
 @testable import SaidDoneApp
 import SaidDoneCore
 
-final class HistoryModelTests: XCTestCase {
-    @MainActor
-    func testClearWinsOverPendingPersistence() async throws {
+@MainActor
+struct HistoryModelTests {
+    @Test @MainActor
+    func clearWinsOverPendingPersistence() async throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: dir) }
         let repository = HistoryRepository(directory: dir)
@@ -17,8 +19,8 @@ final class HistoryModelTests: XCTestCase {
         model.clear()
         try await Task.sleep(for: .milliseconds(300))
 
-        XCTAssertTrue(model.entries.isEmpty)
+        #expect(model.entries.isEmpty)
         let persisted = await repository.recent()
-        XCTAssertTrue(persisted.isEmpty)
+        #expect(persisted.isEmpty)
     }
 }

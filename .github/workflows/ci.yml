@@ -22,4 +22,4 @@ jobs:
           xcodebuild -runFirstLaunch
 
       - name: Run tests
-        run: swift test
+        run: scripts/test.sh

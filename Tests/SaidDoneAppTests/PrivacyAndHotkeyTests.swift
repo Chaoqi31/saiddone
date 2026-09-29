@@ -1,20 +1,21 @@
+import Foundation
 import AppKit
-import XCTest
+import Testing
 import SaidDoneCore
 @testable import SaidDoneApp
 
 @MainActor
-final class PrivacyAndHotkeyTests: XCTestCase {
-    func testAppControllerDoesNotLogTranscribedText() throws {
+struct PrivacyAndHotkeyTests {
+    @Test func appControllerDoesNotLogTranscribedText() throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let source = try String(contentsOf: root.appendingPathComponent("Sources/SaidDoneApp/AppController.swift"))
 
-        XCTAssertFalse(source.contains("RAW:"))
-        XCTAssertFalse(source.contains("result.rawTranscript)'"))
-        XCTAssertFalse(source.contains("result.text)'"))
+        #expect(!(source.contains("RAW:")))
+        #expect(!(source.contains("result.rawTranscript)'")))
+        #expect(!(source.contains("result.text)'")))
     }
 
-    func testPasteboardSnapshotRestoresString() {
+    @Test func pasteboardSnapshotRestoresString() {
         let pasteboard = NSPasteboard.withUniqueName()
         pasteboard.clearContents()
         pasteboard.setString("original", forType: .string)
@@ -24,72 +25,64 @@ final class PrivacyAndHotkeyTests: XCTestCase {
         pasteboard.setString("temporary", forType: .string)
         snapshot.restore(to: pasteboard)
 
-        XCTAssertEqual(pasteboard.string(forType: .string), "original")
+        #expect((pasteboard.string(forType: .string)) == "original")
         pasteboard.releaseGlobally()
     }
 
-    func testFastDraftReplacementNeverUsesBlindUndo() throws {
+    @Test func fastDraftReplacementNeverUsesBlindUndo() throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let source = try String(contentsOf: root.appendingPathComponent("Sources/SaidDoneApp/InsertionService.swift"))
 
-        XCTAssertFalse(source.contains("synthesizeCommandZ"))
+        #expect(!(source.contains("synthesizeCommandZ")))
     }
 
-    func testFastDraftReplacementValidatesOriginalTargetAndCancelsClipboardRestore() throws {
+    @Test func fastDraftReplacementValidatesOriginalTargetAndCancelsClipboardRestore() throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let source = try String(contentsOf: root.appendingPathComponent("Sources/SaidDoneApp/InsertionService.swift"))
 
-        XCTAssertTrue(source.contains("insertFastDraft"))
-        XCTAssertTrue(source.contains("CFEqual"))
-        XCTAssertTrue(source.contains("cancelPendingPasteboardRestore"))
+        #expect(source.contains("insertFastDraft"))
+        #expect(source.contains("CFEqual"))
+        #expect(source.contains("cancelPendingPasteboardRestore"))
     }
 
-    func testFastDraftIsNotInsertedWhenTargetCannotBeSafelyReplaced() throws {
+    @Test func fastDraftIsNotInsertedWhenTargetCannotBeSafelyReplaced() throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let source = try String(contentsOf: root.appendingPathComponent("Sources/SaidDoneApp/InsertionService.swift"))
 
-        XCTAssertTrue(source.contains("guard let target = replaceableFastDraftTarget(for: text) else"))
-        XCTAssertTrue(source.contains("AXUIElementIsAttributeSettable"))
+        #expect(source.contains("guard let target = replaceableFastDraftTarget(for: text) else"))
+        #expect(source.contains("AXUIElementIsAttributeSettable"))
     }
 
-    func testDuplicateHotkeysAreReported() {
+    @Test func duplicateHotkeysAreReported() {
         var config = AppConfig.default
         config.translationHotkey = config.dictationHotkey
 
-        XCTAssertEqual(Set(AppController.duplicateHotkeyNames(config)), ["Voice Input", "Translation"])
+        #expect((Set(AppController.duplicateHotkeyNames(config))) == (["Voice Input", "Translation"]))
     }
 
-    func testMouseHotkeyDisplayAndDuplicates() {
+    @Test func mouseHotkeyDisplayAndDuplicates() {
         let side = Hotkey(mouseButton: 3)
-        XCTAssertTrue(hotkeyDisplay(side).contains("4") || hotkeyDisplay(side).contains("侧"))
+        #expect(hotkeyDisplay(side).contains("4") || hotkeyDisplay(side).contains("侧"))
 
         var config = AppConfig.default
         config.askHotkey = Hotkey(mouseButton: 3)
         config.dictationHotkey = Hotkey(mouseButton: 3)
-        XCTAssertEqual(Set(AppController.duplicateHotkeyNames(config)), ["Ask Anything", "Voice Input"])
+        #expect((Set(AppController.duplicateHotkeyNames(config))) == (["Ask Anything", "Voice Input"]))
     }
 
-    func testRecordingToggleIgnoresWhilePipelineBusy() {
-        XCTAssertEqual(
-            AppController.recordingToggleAction(activeMode: nil, isWorking: true, requested: .dictation),
-            .ignoreBusy)
+    @Test func recordingToggleIgnoresWhilePipelineBusy() {
+        #expect((AppController.recordingToggleAction(activeMode: nil, isWorking: true, requested: .dictation)) == .ignoreBusy)
     }
 
-    func testRecordingToggleFinishesSameMode() {
-        XCTAssertEqual(
-            AppController.recordingToggleAction(activeMode: .dictation, isWorking: false, requested: .dictation),
-            .finish)
+    @Test func recordingToggleFinishesSameMode() {
+        #expect((AppController.recordingToggleAction(activeMode: .dictation, isWorking: false, requested: .dictation)) == .finish)
     }
 
-    func testRecordingToggleSwitchesDifferentMode() {
-        XCTAssertEqual(
-            AppController.recordingToggleAction(activeMode: .dictation, isWorking: false, requested: .ask),
-            .switchMode(.ask))
+    @Test func recordingToggleSwitchesDifferentMode() {
+        #expect((AppController.recordingToggleAction(activeMode: .dictation, isWorking: false, requested: .ask)) == (.switchMode(.ask)))
     }
 
-    func testRecordingToggleStartsWhenIdle() {
-        XCTAssertEqual(
-            AppController.recordingToggleAction(activeMode: nil, isWorking: false, requested: .translation(target: "en")),
-            .start(.translation(target: "en")))
+    @Test func recordingToggleStartsWhenIdle() {
+        #expect((AppController.recordingToggleAction(activeMode: nil, isWorking: false, requested: .translation(target: "en"))) == (.start(.translation(target: "en"))))
     }
 }

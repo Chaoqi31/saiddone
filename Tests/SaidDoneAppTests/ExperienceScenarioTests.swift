@@ -1,18 +1,20 @@
-import XCTest
+import Foundation
+import Testing
 import SaidDoneCore
 @testable import SaidDoneApp
 
-final class ExperienceScenarioTests: XCTestCase {
-    func testManualLaunchOpensWindowEvenWhenLoginItemPreferenceIsEnabled() {
-        XCTAssertTrue(AppController.shouldOpenMainWindow(
+@MainActor
+struct ExperienceScenarioTests {
+    @Test func manualLaunchOpensWindowEvenWhenLoginItemPreferenceIsEnabled() {
+        #expect(AppController.shouldOpenMainWindow(
             onboardingCompleted: true, launchedAsLoginItem: false))
-        XCTAssertFalse(AppController.shouldOpenMainWindow(
-            onboardingCompleted: true, launchedAsLoginItem: true))
-        XCTAssertFalse(AppController.shouldOpenMainWindow(
-            onboardingCompleted: false, launchedAsLoginItem: false))
+        #expect(!(AppController.shouldOpenMainWindow(
+            onboardingCompleted: true, launchedAsLoginItem: true)))
+        #expect(!(AppController.shouldOpenMainWindow(
+            onboardingCompleted: false, launchedAsLoginItem: false)))
     }
 
-    func testHybridLocalSpeechAndConfiguredCloudAIIsReady() {
+    @Test func hybridLocalSpeechAndConfiguredCloudAIIsReady() {
         var config = AppConfig.default
         config.asr = ProviderSelection(location: .local, modelID: "speech")
         config.llm = ProviderSelection(location: .cloud, modelID: "")
@@ -21,11 +23,11 @@ final class ExperienceScenarioTests: XCTestCase {
         config.cloud.llmModel = "deepseek-chat"
         config.cloud.llmAPIKeys["deepseek"] = "test-key"
 
-        XCTAssertNil(EngineReadiness.issue(
-            for: config, asrModelReady: true, llmModelReady: false))
+        #expect((EngineReadiness.issue(
+            for: config, asrModelReady: true, llmModelReady: false)) == nil)
     }
 
-    func testCloudAIWithoutRequiredKeyFailsBeforeRecording() {
+    @Test func cloudAIWithoutRequiredKeyFailsBeforeRecording() {
         var config = AppConfig.default
         config.asr = ProviderSelection(location: .local, modelID: "speech")
         config.llm = ProviderSelection(location: .cloud, modelID: "")
@@ -34,12 +36,10 @@ final class ExperienceScenarioTests: XCTestCase {
         config.cloud.llmModel = "deepseek-chat"
         config.cloud.llmAPIKeys = [:]
 
-        XCTAssertEqual(
-            EngineReadiness.issue(for: config, asrModelReady: true, llmModelReady: false),
-            .cloudAIIncomplete)
+        #expect((EngineReadiness.issue(for: config, asrModelReady: true, llmModelReady: false)) == .cloudAIIncomplete)
     }
 
-    func testNoKeyLocalCloudPresetCanBeReady() {
+    @Test func noKeyLocalCloudPresetCanBeReady() {
         var config = AppConfig.default
         config.asr = ProviderSelection(location: .local, modelID: "speech")
         config.llm = ProviderSelection(location: .cloud, modelID: "")
@@ -48,11 +48,11 @@ final class ExperienceScenarioTests: XCTestCase {
         config.cloud.llmModel = "qwen3"
         config.cloud.llmAPIKeys = [:]
 
-        XCTAssertNil(EngineReadiness.issue(
-            for: config, asrModelReady: true, llmModelReady: false))
+        #expect((EngineReadiness.issue(
+            for: config, asrModelReady: true, llmModelReady: false)) == nil)
     }
 
-    func testCloudSpeechRequiresEndpointModelAndKey() {
+    @Test func cloudSpeechRequiresEndpointModelAndKey() {
         var config = AppConfig.default
         config.asr = ProviderSelection(location: .cloud, modelID: "")
         config.llm = ProviderSelection(location: .local, modelID: "ai")
@@ -60,12 +60,10 @@ final class ExperienceScenarioTests: XCTestCase {
         config.cloud.asrModel = "speech-model"
         config.cloud.asrKey = ""
 
-        XCTAssertEqual(
-            EngineReadiness.issue(for: config, asrModelReady: false, llmModelReady: true),
-            .cloudSpeechIncomplete)
+        #expect((EngineReadiness.issue(for: config, asrModelReady: false, llmModelReady: true)) == .cloudSpeechIncomplete)
     }
 
-    func testLateSecretHydrationPreservesNewerOrdinarySettings() {
+    @Test func lateSecretHydrationPreservesNewerOrdinarySettings() {
         var hydrated = AppConfig.default
         hydrated.soundsEnabled = true
         hydrated.cloud.llmAPIKeys["deepseek"] = "key-from-keychain"
@@ -78,13 +76,13 @@ final class ExperienceScenarioTests: XCTestCase {
         let merged = ConfigHydration.mergeSecrets(
             from: hydrated, into: editedWhileLoading)
 
-        XCTAssertFalse(merged.soundsEnabled)
-        XCTAssertEqual(merged.userProfile, "newer profile")
-        XCTAssertEqual(merged.cloud.llmAPIKeys["deepseek"], "key-from-keychain")
-        XCTAssertEqual(merged.cloud.asrKey, "asr-from-keychain")
+        #expect(!merged.soundsEnabled)
+        #expect(merged.userProfile == "newer profile")
+        #expect(merged.cloud.llmAPIKeys["deepseek"] == "key-from-keychain")
+        #expect(merged.cloud.asrKey == "asr-from-keychain")
     }
 
-    func testLateHydrationNeverOverwritesAUserEnteredSecret() {
+    @Test func lateHydrationNeverOverwritesAUserEnteredSecret() {
         var hydrated = AppConfig.default
         hydrated.cloud.llmAPIKeys["deepseek"] = "older-key"
 
@@ -93,11 +91,11 @@ final class ExperienceScenarioTests: XCTestCase {
 
         let merged = ConfigHydration.mergeSecrets(from: hydrated, into: current)
 
-        XCTAssertEqual(merged.cloud.llmAPIKeys["deepseek"], "newer-key")
+        #expect(merged.cloud.llmAPIKeys["deepseek"] == "newer-key")
     }
 
-    @MainActor
-    func testCloudOnlySetupDoesNotSuggestModelDownloads() {
+    @Test @MainActor
+    func cloudOnlySetupDoesNotSuggestModelDownloads() {
         var config = AppConfig.default
         config.asr = ProviderSelection(location: .cloud, modelID: "")
         config.llm = ProviderSelection(location: .cloud, modelID: "")
@@ -111,20 +109,20 @@ final class ExperienceScenarioTests: XCTestCase {
         let model = SetupModel()
         model.sync(from: config)
 
-        XCTAssertFalse(model.asrLocal)
-        XCTAssertFalse(model.llmLocal)
-        XCTAssertTrue(model.asrReady)
-        XCTAssertTrue(model.llmReady)
+        #expect(!model.asrLocal)
+        #expect(!model.llmLocal)
+        #expect(model.asrReady)
+        #expect(model.llmReady)
     }
 
-    @MainActor
-    func testCaptureStartFailuresAreActionable() {
+    @Test @MainActor
+    func captureStartFailuresAreActionable() {
         let permission = AppController.friendlyCaptureError(
             NSError(domain: "capture", code: 1), microphoneAuthorized: false)
-        XCTAssertTrue(permission.contains("Microphone"))
+        #expect(permission.contains("Microphone"))
 
         let missingInput = AppController.friendlyCaptureError(
             CaptureError.invalidInputFormat, microphoneAuthorized: true)
-        XCTAssertTrue(missingInput.contains("microphone input"))
+        #expect(missingInput.contains("microphone input"))
     }
 }

@@ -1,19 +1,20 @@
-import XCTest
+import Foundation
+import Testing
 @testable import SaidDoneCore
 
-final class CloudProviderRegistryTests: XCTestCase {
-    func testRequiredProviderPresets() {
+struct CloudProviderRegistryTests {
+    @Test func requiredProviderPresets() {
         let ids = Set(CloudProviderRegistry.builtIn.map(\.id))
         for id in ["openai", "deepseek", "moonshot", "zhipu", "siliconflow"] {
-            XCTAssertTrue(ids.contains(id), "missing provider: \(id)")
+            #expect(ids.contains(id), "missing provider: \(id)")
         }
     }
 
-    func testBuiltInIDsUniqueAndURLsValid() {
+    @Test func builtInIDsUniqueAndURLsValid() {
         let ids = CloudProviderRegistry.builtIn.map(\.id)
-        XCTAssertEqual(Set(ids).count, ids.count)
+        #expect((Set(ids).count) == ids.count)
         for p in CloudProviderRegistry.builtIn {
-            XCTAssertNotNil(URL(string: p.baseURL), p.baseURL)
+            #expect(URL(string: p.baseURL) != nil, "\(p.baseURL)")
         }
     }
 }

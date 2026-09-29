@@ -1,4 +1,5 @@
-import XCTest
+import Foundation
+import Testing
 @testable import SaidDoneCore
 
 private actor RecordingLLMProvider: LLMProvider {
@@ -76,8 +77,8 @@ private actor DraftRecorder {
     func snapshot() -> [String] { drafts }
 }
 
-final class PipelineFlowTests: XCTestCase {
-    func testTranslationUsesOneCombinedLLMOperation() async throws {
+struct PipelineFlowTests {
+    @Test func translationUsesOneCombinedLLMOperation() async throws {
         let llm = RecordingLLMProvider()
         let orchestrator = PipelineOrchestrator(
             asr: EchoASRProvider(preset: "你好"),
@@ -88,13 +89,13 @@ final class PipelineFlowTests: XCTestCase {
             mode: .translation(target: "en"))
         let calls = await llm.snapshot()
 
-        XCTAssertEqual(result.text, "[en] combined:你好")
-        XCTAssertEqual(calls.polish, 0)
-        XCTAssertEqual(calls.translate, 0)
-        XCTAssertEqual(calls.combined, 1)
+        #expect(result.text == "[en] combined:你好")
+        #expect(calls.polish == 0)
+        #expect(calls.translate == 0)
+        #expect(calls.combined == 1)
     }
 
-    func testTranslationLetsCombinedOperationClassifyPureFiller() async throws {
+    @Test func translationLetsCombinedOperationClassifyPureFiller() async throws {
         let llm = RecordingLLMProvider(combinedResponse: "")
         let orchestrator = PipelineOrchestrator(
             asr: EchoASRProvider(preset: "嗯 那个 就是 呃"),
@@ -105,11 +106,11 @@ final class PipelineFlowTests: XCTestCase {
             mode: .translation(target: "en"))
         let calls = await llm.snapshot()
 
-        XCTAssertEqual(result.text, "")
-        XCTAssertEqual(calls.combined, 1)
+        #expect(result.text == "")
+        #expect(calls.combined == 1)
     }
 
-    func testTranslationDoesNotTreatCancellationPhraseAsCommand() async throws {
+    @Test func translationDoesNotTreatCancellationPhraseAsCommand() async throws {
         let llm = RecordingLLMProvider()
         let orchestrator = PipelineOrchestrator(
             asr: EchoASRProvider(preset: "Translate cancel that"),
@@ -120,11 +121,11 @@ final class PipelineFlowTests: XCTestCase {
             mode: .translation(target: "zh"))
         let calls = await llm.snapshot()
 
-        XCTAssertEqual(result.text, "[zh] combined:Translate cancel that")
-        XCTAssertEqual(calls.combined, 1)
+        #expect(result.text == "[zh] combined:Translate cancel that")
+        #expect(calls.combined == 1)
     }
 
-    func testElapsedIncludesASR() async throws {
+    @Test func elapsedIncludesASR() async throws {
         let orchestrator = PipelineOrchestrator(
             asr: DelayedASRProvider(delay: .milliseconds(60), text: "hello"),
             llm: EchoLLMProvider())
@@ -132,10 +133,10 @@ final class PipelineFlowTests: XCTestCase {
         let result = try await orchestrator.run(
             AudioSamples(samples: []), mode: .dictation)
 
-        XCTAssertGreaterThanOrEqual(result.elapsed, 0.05)
+        #expect(result.elapsed >= 0.05)
     }
 
-    func testAskUsesCommonCleanupDictionarySelectionAndLLM() async throws {
+    @Test func askUsesCommonCleanupDictionarySelectionAndLLM() async throws {
         let llm = RecordingLLMProvider()
         let orchestrator = PipelineOrchestrator(
             asr: EchoASRProvider(preset: "  ask   clod  "),
@@ -148,13 +149,13 @@ final class PipelineFlowTests: XCTestCase {
             options: PipelineOptions(askSelection: "selected text"))
         let calls = await llm.snapshot()
 
-        XCTAssertEqual(result.text, "answer")
-        XCTAssertEqual(calls.ask, 1)
-        XCTAssertEqual(calls.question, "ask Claude")
-        XCTAssertEqual(calls.selection, "selected text")
+        #expect(result.text == "answer")
+        #expect(calls.ask == 1)
+        #expect(calls.question == "ask Claude")
+        #expect(calls.selection == "selected text")
     }
 
-    func testAllModesTrimModelOutputBoundaries() async throws {
+    @Test func allModesTrimModelOutputBoundaries() async throws {
         let orchestrator = PipelineOrchestrator(
             asr: EchoASRProvider(preset: "question"),
             llm: RecordingLLMProvider(askResponse: "  answer \n"))
@@ -162,10 +163,10 @@ final class PipelineFlowTests: XCTestCase {
         let result = try await orchestrator.run(
             AudioSamples(samples: []), mode: .ask)
 
-        XCTAssertEqual(result.text, "answer")
+        #expect(result.text == "answer")
     }
 
-    func testFastDraftWaitsForSuccessfulInsertAndRecordsActualDraft() async throws {
+    @Test func fastDraftWaitsForSuccessfulInsertAndRecordsActualDraft() async throws {
         let recorder = DraftRecorder(accepts: true)
         let orchestrator = PipelineOrchestrator(
             asr: EchoASRProvider(preset: "hello"),
@@ -178,12 +179,12 @@ final class PipelineFlowTests: XCTestCase {
             options: PipelineOptions(fastDraftEnabled: true))
         let drafts = await recorder.snapshot()
 
-        XCTAssertEqual(drafts, ["hello"])
-        XCTAssertEqual(result.draftText, "hello")
-        XCTAssertEqual(result.text, "polished:hello")
+        #expect(drafts == ["hello"])
+        #expect(result.draftText == "hello")
+        #expect(result.text == "polished:hello")
     }
 
-    func testRejectedFastDraftIsNotReportedAsInserted() async throws {
+    @Test func rejectedFastDraftIsNotReportedAsInserted() async throws {
         let recorder = DraftRecorder(accepts: false)
         let orchestrator = PipelineOrchestrator(
             asr: EchoASRProvider(preset: "hello"),
@@ -195,6 +196,6 @@ final class PipelineFlowTests: XCTestCase {
             mode: .dictation,
             options: PipelineOptions(fastDraftEnabled: true))
 
-        XCTAssertNil(result.draftText)
+        #expect(result.draftText == nil)
     }
 }

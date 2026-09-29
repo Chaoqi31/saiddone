@@ -1,10 +1,11 @@
-import XCTest
+import Foundation
+import Testing
 @testable import SaidDoneProviders
 import SaidDoneCore
 
 /// Mocks URLProtocol so VolcengineASRProvider can be exercised against canned header/body pairs.
 final class VolcASRMockProtocol: URLProtocol {
-    static var handler: ((URLRequest) -> (Int, [String: String], Data))?
+    nonisolated(unsafe) static var handler: ((URLRequest) -> (Int, [String: String], Data))?
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -22,7 +23,8 @@ final class VolcASRMockProtocol: URLProtocol {
     override func stopLoading() {}
 }
 
-final class VolcengineASRProviderTests: XCTestCase {
+@Suite(.serialized)
+struct VolcengineASRProviderTests {
     private func makeSession() -> URLSession {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [VolcASRMockProtocol.self]
@@ -31,78 +33,74 @@ final class VolcengineASRProviderTests: XCTestCase {
 
     private let audio = AudioSamples(samples: [0.1, -0.1, 0.2, -0.2])
 
-    override func tearDown() {
-        VolcASRMockProtocol.handler = nil
-    }
-
-    func testSuccessParsesText() async throws {
+    @Test func successParsesText() async throws {
         VolcASRMockProtocol.handler = { req in
-            XCTAssertEqual(req.value(forHTTPHeaderField: "X-Api-App-Key"), "123")
-            XCTAssertEqual(req.value(forHTTPHeaderField: "X-Api-Resource-Id"), "volc.bigasr.auc_turbo")
+            #expect((req.value(forHTTPHeaderField: "X-Api-App-Key")) == "123")
+            #expect((req.value(forHTTPHeaderField: "X-Api-Resource-Id")) == "volc.bigasr.auc_turbo")
             let body = #"{"result":{"text":" 你好 world \n"}}"#
             return (200, ["X-Api-Status-Code": "20000000"], Data(body.utf8))
         }
         let p = VolcengineASRProvider(appID: "123", accessToken: "tok", session: makeSession())
         let text = try await p.transcribe(audio, languageHint: nil)
-        XCTAssertEqual(text, "你好 world")
+        #expect(text == "你好 world")
     }
 
-    func testSuccessParsesNestedDataResult() async throws {
+    @Test func successParsesNestedDataResult() async throws {
         VolcASRMockProtocol.handler = { _ in
             (200, ["X-Api-Status-Code": "20000000"],
              Data(#"{"data":{"result":{"text":"nested"}}}"#.utf8))
         }
         let p = VolcengineASRProvider(appID: "123", accessToken: "tok", session: makeSession())
         let text = try await p.transcribe(audio, languageHint: nil)
-        XCTAssertEqual(text, "nested")
+        #expect(text == "nested")
     }
 
-    func testSilenceReturnsEmptyNotError() async throws {
+    @Test func silenceReturnsEmptyNotError() async throws {
         // Flash resource so silence short-circuits on the single call.
         VolcASRMockProtocol.handler = { _ in
             (200, ["X-Api-Status-Code": "20000003"], Data())
         }
         let p = VolcengineASRProvider(appID: "123", accessToken: "tok", session: makeSession())
         let text = try await p.transcribe(audio, languageHint: nil)
-        XCTAssertEqual(text, "")
+        #expect(text == "")
     }
 
-    func testBusinessErrorThrowsWithMessage() async {
+    @Test func businessErrorThrowsWithMessage() async {
         VolcASRMockProtocol.handler = { _ in
             (200, ["X-Api-Status-Code": "45000010", "X-Api-Message": "appid mismatch"], Data())
         }
         let p = VolcengineASRProvider(appID: "123", accessToken: "tok", session: makeSession())
         do {
             _ = try await p.transcribe(audio, languageHint: nil)
-            XCTFail("expected throw")
+            Issue.record("expected throw")
         } catch let ProviderError.modelUnavailable(msg) {
-            XCTAssertTrue(msg.contains("appid mismatch"), msg)
+            #expect(msg.contains("appid mismatch"), "\(msg)")
         } catch {
-            XCTFail("wrong error: \(error)")
+            Issue.record("wrong error: \(error)")
         }
     }
 
-    func testMissingCredentialsThrowsNotConfigured() async {
+    @Test func missingCredentialsThrowsNotConfigured() async {
         let p = VolcengineASRProvider(appID: "", accessToken: "", session: makeSession())
         do {
             _ = try await p.transcribe(audio, languageHint: nil)
-            XCTFail("expected throw")
+            Issue.record("expected throw")
         } catch let ProviderError.notConfigured(msg) {
-            XCTAssertTrue(msg.contains("missing"), msg)
+            #expect(msg.contains("missing"), "\(msg)")
         } catch {
-            XCTFail("wrong error: \(error)")
+            Issue.record("wrong error: \(error)")
         }
     }
 
-    func testFactoryRoutesBytedanceHostToVolcengine() {
-        var config = AppConfig(directory: URL(fileURLWithPath: "/tmp"))
+    @Test func factoryRoutesBytedanceHostToVolcengine() {
+        var config = AppConfig.default
         config.asr = ProviderSelection(location: .cloud, modelID: "")
         config.cloud.asrBaseURL = "https://openspeech.bytedance.com"
         config.cloud.asrAppID = "123"
         config.cloud.asrKey = "tok"
-        XCTAssertTrue(ProviderFactory.makeASR(config) is VolcengineASRProvider)
+        #expect(ProviderFactory.makeASR(config) is VolcengineASRProvider)
 
         config.cloud.asrBaseURL = "https://api.siliconflow.cn/v1"
-        XCTAssertFalse(ProviderFactory.makeASR(config) is VolcengineASRProvider)
+        #expect(!(ProviderFactory.makeASR(config) is VolcengineASRProvider))
     }
 }

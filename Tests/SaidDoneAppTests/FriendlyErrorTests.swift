@@ -1,31 +1,28 @@
-import XCTest
+import Foundation
+import Testing
 import SaidDoneCore
 @testable import SaidDoneApp
 
 /// The user-facing error mapping (AppController.friendlyError) — every pipeline failure funnels
 /// through it, so a wrong bucket means a misleading message on screen.
 @MainActor
-final class FriendlyErrorTests: XCTestCase {
+struct FriendlyErrorTests {
     private func message(_ error: Error) -> String { AppController.friendlyError(error) }
 
-    func testProviderErrorBuckets() {
-        XCTAssertEqual(message(ProviderError.notConfigured("x")),
-                       NSLocalizedString("Cloud setup issue — check your API key and endpoint in Settings → Cloud.", comment: "error"))
-        XCTAssertEqual(message(ProviderError.modelUnavailable("x")),
-                       NSLocalizedString("Engine unavailable. Please try again shortly.", comment: "error"))
-        XCTAssertEqual(message(ProviderError.latencyBudgetExceeded),
-                       NSLocalizedString("Timed out. Please try again.", comment: "error"))
+    @Test func providerErrorBuckets() {
+        #expect((message(ProviderError.notConfigured("x"))) == (NSLocalizedString("Cloud setup issue — check your API key and endpoint in Settings → Cloud.", comment: "error")))
+        #expect((message(ProviderError.modelUnavailable("x"))) == (NSLocalizedString("Engine unavailable. Please try again shortly.", comment: "error")))
+        #expect((message(ProviderError.latencyBudgetExceeded)) == (NSLocalizedString("Timed out. Please try again.", comment: "error")))
     }
 
-    func testNetworkErrorsMapToNetworkMessage() {
+    @Test func networkErrorsMapToNetworkMessage() {
         let network = NSLocalizedString("Network unavailable. Check your connection and try again.", comment: "error")
-        XCTAssertEqual(message(URLError(.notConnectedToInternet)), network)
-        XCTAssertEqual(message(URLError(.timedOut)), network)
+        #expect((message(URLError(.notConnectedToInternet))) == network)
+        #expect((message(URLError(.timedOut))) == network)
     }
 
-    func testUnknownErrorGetsGenericMessage() {
+    @Test func unknownErrorGetsGenericMessage() {
         struct Weird: Error {}
-        XCTAssertEqual(message(Weird()),
-                       NSLocalizedString("Transcription failed. Please try again.", comment: "error"))
+        #expect((message(Weird())) == (NSLocalizedString("Transcription failed. Please try again.", comment: "error")))
     }
 }

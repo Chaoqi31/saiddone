@@ -1,8 +1,9 @@
-import XCTest
+import Foundation
+import Testing
 @testable import SaidDoneProviders
 import SaidDoneCore
 
-final class PolishLiveSmokeTests: XCTestCase {
+struct PolishLiveSmokeTests {
     private struct Scenario {
         var name: String
         var input: String
@@ -43,14 +44,13 @@ final class PolishLiveSmokeTests: XCTestCase {
         }
     }
 
-    func testCloudPolishHandlesColloquialCorpus() async throws {
-        guard ProcessInfo.processInfo.environment["SAIDDONE_POLISH_LIVE"] == "1" else {
-            throw XCTSkip("Set SAIDDONE_POLISH_LIVE=1 to run the live cloud polish corpus.")
-        }
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["SAIDDONE_POLISH_LIVE"] == "1",
+                   "Set SAIDDONE_POLISH_LIVE=1 to run the live cloud polish corpus."))
+    func cloudPolishHandlesColloquialCorpus() async throws {
 
         let env = Self.loadEnv()
         let key = env["DEEPSEEK_API_KEY"] ?? env["OPENAI_API_KEY"] ?? ""
-        guard !key.isEmpty else { throw XCTSkip("Missing DEEPSEEK_API_KEY or OPENAI_API_KEY.") }
+        guard !key.isEmpty else { Issue.record("Missing DEEPSEEK_API_KEY or OPENAI_API_KEY."); return }
 
         let base = env["DEEPSEEK_BASE_URL"] ?? env["OPENAI_BASE_URL"] ?? "https://api.deepseek.com"
         let model = env["DEEPSEEK_MODEL"] ?? env["OPENAI_MODEL"] ?? "deepseek-chat"
@@ -72,7 +72,7 @@ final class PolishLiveSmokeTests: XCTestCase {
         }
 
         if !failures.isEmpty {
-            XCTFail("Cloud polish corpus failures:\n" + failures.joined(separator: "\n"))
+            Issue.record("Cloud polish corpus failures:\n\(failures.joined(separator: "\n"))")
         }
     }
 

@@ -20,7 +20,7 @@ jobs:
           xcodebuild -runFirstLaunch
 
       - name: Run tests
-        run: swift test
+        run: scripts/test.sh
 
       - name: Resolve version from tag
         id: version

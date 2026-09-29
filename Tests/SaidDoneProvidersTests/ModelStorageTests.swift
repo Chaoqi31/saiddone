@@ -1,8 +1,9 @@
-import XCTest
+import Foundation
+import Testing
 @testable import SaidDoneProviders
 
-final class ModelStorageTests: XCTestCase {
-    func testWhisperResolutionPrefersCanonicalThenFallsBackToLegacy() throws {
+struct ModelStorageTests {
+    @Test func whisperResolutionPrefersCanonicalThenFallsBackToLegacy() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let canonical = root.appendingPathComponent("canonical")
@@ -13,22 +14,18 @@ final class ModelStorageTests: XCTestCase {
         try FileManager.default.createDirectory(
             at: legacyFolder.appendingPathComponent("AudioEncoder.mlmodelc"),
             withIntermediateDirectories: true)
-        XCTAssertEqual(
-            ModelStorage.resolveWhisperFolder(
-                modelID: model, canonicalBase: canonical, legacyBase: legacy),
-            legacyFolder)
+        #expect((ModelStorage.resolveWhisperFolder(
+                modelID: model, canonicalBase: canonical, legacyBase: legacy)) == legacyFolder)
 
         let canonicalFolder = ModelStorage.whisperFolder(base: canonical, modelID: model)
         try FileManager.default.createDirectory(
             at: canonicalFolder.appendingPathComponent("AudioEncoder.mlmodelc"),
             withIntermediateDirectories: true)
-        XCTAssertEqual(
-            ModelStorage.resolveWhisperFolder(
-                modelID: model, canonicalBase: canonical, legacyBase: legacy),
-            canonicalFolder)
+        #expect((ModelStorage.resolveWhisperFolder(
+                modelID: model, canonicalBase: canonical, legacyBase: legacy)) == canonicalFolder)
     }
 
-    func testWhisperReadinessIsExactForSelectedModel() throws {
+    @Test func whisperReadinessIsExactForSelectedModel() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let installed = ModelStorage.whisperFolder(base: root, modelID: "installed")
@@ -36,19 +33,19 @@ final class ModelStorageTests: XCTestCase {
             at: installed.appendingPathComponent("AudioEncoder.mlmodelc"),
             withIntermediateDirectories: true)
 
-        XCTAssertNil(ModelStorage.resolveWhisperFolder(
+        #expect((ModelStorage.resolveWhisperFolder(
             modelID: "selected", canonicalBase: root,
-            legacyBase: root.appendingPathComponent("legacy")))
+            legacyBase: root.appendingPathComponent("legacy"))) == nil)
     }
 
-    func testMLXReadinessRequiresConfigFile() throws {
+    @Test func mLXReadinessRequiresConfigFile() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         let folder = root.appendingPathComponent("mlx-community/Qwen")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        XCTAssertFalse(ModelStorage.isMLXReady(modelID: "mlx-community/Qwen", modelsRoot: root))
+        #expect(!(ModelStorage.isMLXReady(modelID: "mlx-community/Qwen", modelsRoot: root)))
 
         try Data("{}".utf8).write(to: folder.appendingPathComponent("config.json"))
-        XCTAssertTrue(ModelStorage.isMLXReady(modelID: "mlx-community/Qwen", modelsRoot: root))
+        #expect(ModelStorage.isMLXReady(modelID: "mlx-community/Qwen", modelsRoot: root))
     }
 }

@@ -1,4 +1,5 @@
-import XCTest
+import Foundation
+import Testing
 @testable import SaidDoneCore
 
 /// LLM that sleeps before answering — drives the latency-budget (GOALS B1 runtime gate) paths.
@@ -46,98 +47,98 @@ private struct FailingLLMProvider: LLMProvider {
     }
 }
 
-final class PipelineTimeoutTests: XCTestCase {
+struct PipelineTimeoutTests {
     private let audio = AudioSamples(samples: [])
 
-    func testPolishTimeoutThrowsLatencyBudgetExceeded() async throws {
+    @Test func polishTimeoutThrowsLatencyBudgetExceeded() async throws {
         let asr = EchoASRProvider(preset: "hello claude")
         let dict = CustomDictionary(entries: [.init(wrong: "claude", right: "Claude")])
         let orch = PipelineOrchestrator(asr: asr, llm: SlowLLMProvider(delay: .seconds(5)),
                                         dictionary: dict, llmTimeout: 0.05)
         do {
             _ = try await orch.run(audio, mode: .dictation)
-            XCTFail("expected latencyBudgetExceeded")
+            Issue.record("expected latencyBudgetExceeded")
         } catch let e as ProviderError {
-            guard case .latencyBudgetExceeded = e else { return XCTFail("wrong error: \(e)") }
+            guard case .latencyBudgetExceeded = e else { Issue.record("wrong error: \(e)"); return }
         }
     }
 
-    func testPolishTimeoutDoesNotWaitForNonCooperativeProvider() async throws {
+    @Test func polishTimeoutDoesNotWaitForNonCooperativeProvider() async throws {
         let asr = EchoASRProvider(preset: "hello")
         let orch = PipelineOrchestrator(asr: asr, llm: BlockingLLMProvider(), llmTimeout: 0.05)
 
         let started = Date()
         do {
             _ = try await orch.run(audio, mode: .dictation)
-            XCTFail("expected latencyBudgetExceeded")
+            Issue.record("expected latencyBudgetExceeded")
         } catch let e as ProviderError {
-            guard case .latencyBudgetExceeded = e else { return XCTFail("wrong error: \(e)") }
+            guard case .latencyBudgetExceeded = e else { Issue.record("wrong error: \(e)"); return }
         }
-        XCTAssertLessThan(Date().timeIntervalSince(started), 0.2)
+        #expect((Date().timeIntervalSince(started)) < 0.2)
     }
 
-    func testFastPolishUnaffectedByBudget() async throws {
+    @Test func fastPolishUnaffectedByBudget() async throws {
         let asr = EchoASRProvider(preset: "hello")
         let orch = PipelineOrchestrator(asr: asr, llm: SlowLLMProvider(delay: .milliseconds(1)),
                                         llmTimeout: 5)
         let result = try await orch.run(audio, mode: .dictation)
-        XCTAssertEqual(result.text, "polished")
+        #expect(result.text == "polished")
     }
 
-    func testEmptyPolishFallsBackForNormalText() async throws {
+    @Test func emptyPolishFallsBackForNormalText() async throws {
         let asr = EchoASRProvider(preset: "send the report tomorrow")
         let orch = PipelineOrchestrator(asr: asr,
                                         llm: SlowLLMProvider(delay: .milliseconds(1), polishOutput: ""),
                                         llmTimeout: 5)
         let result = try await orch.run(audio, mode: .dictation)
-        XCTAssertEqual(result.text, "send the report tomorrow")
+        #expect(result.text == "send the report tomorrow")
     }
 
-    func testExplicitCancelCanProduceEmptyPolish() async throws {
+    @Test func explicitCancelCanProduceEmptyPolish() async throws {
         let asr = EchoASRProvider(preset: "send email no wait cancel that")
         let orch = PipelineOrchestrator(asr: asr,
                                         llm: SlowLLMProvider(delay: .milliseconds(1), polishOutput: ""),
                                         llmTimeout: 5)
         let result = try await orch.run(audio, mode: .dictation)
-        XCTAssertEqual(result.text, "")
+        #expect(result.text == "")
     }
 
-    func testPureFillerCanProduceEmptyPolish() async throws {
+    @Test func pureFillerCanProduceEmptyPolish() async throws {
         let asr = EchoASRProvider(preset: "嗯 那个 就是 呃")
         let orch = PipelineOrchestrator(asr: asr,
                                         llm: SlowLLMProvider(delay: .milliseconds(1), polishOutput: ""),
                                         llmTimeout: 5)
         let result = try await orch.run(audio, mode: .dictation)
-        XCTAssertEqual(result.text, "")
+        #expect(result.text == "")
     }
 
-    func testZeroBudgetDisablesTimeout() async throws {
+    @Test func zeroBudgetDisablesTimeout() async throws {
         let asr = EchoASRProvider(preset: "hello")
         let orch = PipelineOrchestrator(asr: asr, llm: SlowLLMProvider(delay: .milliseconds(100)),
                                         llmTimeout: 0)
         let result = try await orch.run(audio, mode: .dictation)
-        XCTAssertEqual(result.text, "polished")
+        #expect(result.text == "polished")
     }
 
-    func testTranslateTimeoutThrowsLatencyBudgetExceeded() async throws {
+    @Test func translateTimeoutThrowsLatencyBudgetExceeded() async throws {
         let asr = EchoASRProvider(preset: "hello")
         // Same slow provider for polish + translate: polish times out first → latencyBudgetExceeded.
         let orch = PipelineOrchestrator(asr: asr, llm: SlowLLMProvider(delay: .seconds(5)),
                                         llmTimeout: 0.05)
         do {
             _ = try await orch.run(audio, mode: .translation(target: "en"))
-            XCTFail("expected latencyBudgetExceeded")
+            Issue.record("expected latencyBudgetExceeded")
         } catch let e as ProviderError {
-            guard case .latencyBudgetExceeded = e else { return XCTFail("wrong error: \(e)") }
+            guard case .latencyBudgetExceeded = e else { Issue.record("wrong error: \(e)"); return }
         }
     }
 
-    func testPolishErrorStillPropagatesUnderBudget() async {
+    @Test func polishErrorStillPropagatesUnderBudget() async {
         let asr = EchoASRProvider(preset: "hello")
         let orch = PipelineOrchestrator(asr: asr, llm: FailingLLMProvider(), llmTimeout: 5)
         do {
             _ = try await orch.run(audio, mode: .dictation)
-            XCTFail("expected error")
+            Issue.record("expected error")
         } catch { /* error path unchanged by the budget */ }
     }
 }
