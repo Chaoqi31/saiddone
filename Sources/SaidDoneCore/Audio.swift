@@ -18,8 +18,10 @@ public struct AudioSamples: Sendable {
         sampleRate > 0 ? Double(samples.count) / sampleRate : 0
     }
 
-    /// True when short enough that the B1 (≤2s) latency bar applies (GOALS: short audio ≤15s).
-    public var isShortUtterance: Bool { duration <= 15 }
+    public var length: Duration { .seconds(duration) }
+
+    /// Too short or too quiet to contain speech (an accidental tap, a muted or disconnected mic): never a job.
+    public var isEffectivelySilent: Bool { duration < 0.15 || peakRMS < 0.0005 }
 
     /// Peak RMS level (0…1) across 30 ms windows — detects quiet speech better than a whole-buffer average.
     public var peakRMS: Float {

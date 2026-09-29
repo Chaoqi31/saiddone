@@ -12,10 +12,11 @@ struct AudioTests {
         #expect((String(data: d.subdata(in: 36..<40), encoding: .ascii)) == "data")
     }
 
-    @Test func durationAndShortFlag() {
+    @Test func durationAndSilence() {
         #expect(abs(AudioSamples(samples: [Float](repeating: 0, count: 16000)).duration - 1) < 0.001)
-        #expect(AudioSamples(samples: [Float](repeating: 0, count: 16000 * 10)).isShortUtterance)
-        #expect(!(AudioSamples(samples: [Float](repeating: 0, count: 16000 * 20)).isShortUtterance))
+        #expect(AudioSamples(samples: [Float](repeating: 0, count: 16000)).isEffectivelySilent, "digital silence")
+        #expect(AudioSamples(samples: [Float](repeating: 0.3, count: 1600)).isEffectivelySilent, "0.1 s tap")
+        #expect(!AudioSamples(samples: [Float](repeating: 0.3, count: 8000)).isEffectivelySilent)
     }
 
     @Test func trimsLeadingTrailingSilence() {

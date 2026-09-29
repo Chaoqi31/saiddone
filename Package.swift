@@ -1,52 +1,12 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
+// C1 of the v2 rewrite: only the pure core is built while the engines and the app shell are rewritten on top of it.
 let package = Package(
     name: "SaidDone",
     platforms: [.macOS(.v14)],
-    products: [
-        .library(name: "SaidDoneCore", targets: ["SaidDoneCore"]),
-        .executable(name: "SaidDone", targets: ["SaidDoneApp"]),
-    ],
-    dependencies: [
-        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "1.0.0"),
-        .package(url: "https://github.com/ml-explore/mlx-swift-examples", from: "2.29.1"),
-        .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.29.0"),
-        // HuggingFace Hub client (already resolved transitively); used directly to download models
-        // into ~/Documents/huggingface with an optional mirror endpoint (ModelDownloader).
-        .package(url: "https://github.com/huggingface/swift-transformers", from: "1.0.0"),
-    ],
     targets: [
-        // Pure logic: protocols, pipeline, dictionary, profiles, config. No external deps.
         .target(name: "SaidDoneCore"),
-        // Concrete Providers (real engines + scaffolds + ladder + factory).
-        .target(
-            name: "SaidDoneProviders",
-            dependencies: [
-                "SaidDoneCore",
-                .product(name: "WhisperKit", package: "WhisperKit"),
-                .product(name: "MLXLLM", package: "mlx-swift-examples"),
-                .product(name: "MLXLMCommon", package: "mlx-swift-examples"),
-                .product(name: "Hub", package: "swift-transformers"),
-            ]
-        ),
-        // Menu-bar app shell: capture, hotkey, insertion, UI.
-        .executableTarget(
-            name: "SaidDoneApp",
-            dependencies: ["SaidDoneCore", "SaidDoneProviders"]
-        ),
-        // Headless spike harness: load a WAV/AIFF, run ASR→polish→translate, print output + timing.
-        // Validates the real engines on-device without mic/GUI (Phase-0 spike).
-        .executableTarget(
-            name: "SaidDoneSpike",
-            dependencies: [
-                "SaidDoneCore", "SaidDoneProviders",
-                .product(name: "MLX", package: "mlx-swift"),
-            ]
-        ),
         .testTarget(name: "SaidDoneCoreTests", dependencies: ["SaidDoneCore"]),
-        .testTarget(name: "SaidDoneProvidersTests", dependencies: ["SaidDoneProviders"]),
-        // App-layer pure logic (error mapping etc.); the executable target is importable in tests.
-        .testTarget(name: "SaidDoneAppTests", dependencies: ["SaidDoneApp"]),
     ]
 )

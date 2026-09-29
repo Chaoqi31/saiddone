@@ -1,208 +1,243 @@
 import Foundation
 
-/// A capture intent, bound to its own global hotkey (GOALS v1: Dictation + Translation Modes).
-public enum Mode: Sendable, Equatable {
-    case dictation
-    case translation(target: String)
-    case ask       // Ask Anything — edit/query selection or answer a spoken question
-}
+// MARK: - Engine surface
 
-/// Result of running the pipeline, with timing so callers can check the B1 (≤2s) latency bar.
-public struct PipelineResult: Sendable {
-    public var text: String
-    public var rawTranscript: String
-    public var elapsed: TimeInterval
-    /// Post-ASR, dictionary-corrected text before polish (for fast-insert UX).
-    public var draftText: String?
-    /// True when Dictation/Translation returned the same text as the corrected draft.
-    public var polishSkipped: Bool
-    public init(text: String, rawTranscript: String, elapsed: TimeInterval,
-                draftText: String? = nil, polishSkipped: Bool = false) {
-        self.text = text
-        self.rawTranscript = rawTranscript
-        self.elapsed = elapsed
-        self.draftText = draftText
-        self.polishSkipped = polishSkipped
+public struct RecognitionHints: Equatable, Sendable {
+    /// nil = let the engine detect the language.
+    public var language: Language?
+    /// Dictionary terms the engine should expect (Whisper prompt tokens, OpenAI `prompt`).
+    public var vocabulary: [String]
+
+    public init(language: Language? = nil, vocabulary: [String] = []) {
+        self.language = language
+        self.vocabulary = vocabulary
     }
 }
 
-/// Per-run policy and context. The Pipeline owns stage ordering; callers supply only user choices.
-public struct PipelineOptions: Sendable {
-    public var context: PolishContext
-    public var languageHint: String?
-    public var askSelection: String
-    public var fastDraftEnabled: Bool
-    public var voiceCommandsEnabled: Bool
+/// Speech to text. Adapters own their wire format and map every failure to `EngineError`.
+public protocol Transcriber: Sendable {
+    func transcribe(_ audio: AudioSamples, hints: RecognitionHints) async throws(EngineError) -> String
+}
 
-    public init(
-        context: PolishContext = .none,
-        languageHint: String? = nil,
-        askSelection: String = "",
-        fastDraftEnabled: Bool = false,
-        voiceCommandsEnabled: Bool = false
-    ) {
-        self.context = context
-        self.languageHint = languageHint
-        self.askSelection = askSelection
-        self.fastDraftEnabled = fastDraftEnabled
-        self.voiceCommandsEnabled = voiceCommandsEnabled
+/// One chat completion. Prompts and reply parsing live in Core, so every engine behaves the same.
+public protocol ChatModel: Sendable {
+    func reply(to prompt: Prompt) async throws(EngineError) -> String
+}
+
+public enum EngineError: Error, Equatable, Sendable {
+    case offline
+    case unauthorized
+    case rateLimited
+    case serverBusy
+    case timedOut
+    /// The service refused the request (4xx), with its message: "model not found", "invalid parameter".
+    case rejected(String)
+    case badResponse
+    case modelMissing
+    case missingCredential
+    case cancelled
+}
+
+// MARK: - Results
+
+public enum Output: Equatable, Sendable {
+    public enum Silence: Equatable, Sendable {
+        /// The engine heard no speech.
+        case noSpeech
+        /// Only filler, or the speaker cancelled the whole utterance.
+        case nothingSaid
+    }
+
+    case insert(String)
+    case replaceSelection(String)
+    case answer(String)
+    case open(URL)
+    case nothing(Silence)
+}
+
+public enum Stage: String, Codable, Equatable, Sendable {
+    case preparing, transcribing, polishing, translating, answering
+}
+
+public struct PipelineResult: Equatable, Sendable {
+    /// What the engine heard, after cleanup and dictionary correction. Kept in History.
+    public var transcript: String
+    public var output: Output
+    public var elapsed: Duration
+}
+
+public struct PipelineFailure: Error, Equatable, Sendable {
+    public var reason: Failure
+    public var stage: Stage
+    /// Set once transcription succeeded, so a failed entry still shows (and can copy) the words.
+    public var transcript: String?
+
+    public init(reason: Failure, stage: Stage, transcript: String?) {
+        self.reason = reason
+        self.stage = stage
+        self.transcript = transcript
     }
 }
 
-/// Orchestrates one Mode's pipeline (ARCHITECTURE data flow):
-/// Capture(audio) → ASR → Custom Dictionary → Polish [→ Translate] → text for Insert.
-public struct PipelineOrchestrator: Sendable {
-    public var asr: ASRProvider
-    public var llm: LLMProvider
-    public var dictionary: CustomDictionary
-    /// Per-Mode AI-operation latency budget in seconds. ASR is timed independently by its Provider.
-    /// 0/nil = no budget; timeout throws `latencyBudgetExceeded`.
-    public var llmTimeout: TimeInterval?
-    /// Optional 0…1 progress + stage label (e.g. for the recording overlay).
-    public var onProgress: (@Sendable (Double, String) -> Void)?
-    /// Optional fast-Insert hook. Returns true only when the draft actually reached the target app.
-    public var onDraft: (@Sendable (String) async -> Bool)?
+/// Everything user-specific one job needs, snapshotted when the job starts.
+public struct JobContext: Equatable, Sendable {
+    public var language: Language?
+    public var profile: String
+    public var tone: String?
+    public var lexicon: Lexicon
 
-    public init(asr: ASRProvider, llm: LLMProvider, dictionary: CustomDictionary = .init(),
-                llmTimeout: TimeInterval? = nil,
-                onProgress: (@Sendable (Double, String) -> Void)? = nil,
-                onDraft: (@Sendable (String) async -> Bool)? = nil) {
-        self.asr = asr
-        self.llm = llm
-        self.dictionary = dictionary
-        self.llmTimeout = llmTimeout
-        self.onProgress = onProgress
-        self.onDraft = onDraft
+    public init(language: Language? = nil, profile: String = "", tone: String? = nil, lexicon: Lexicon = Lexicon()) {
+        self.language = language
+        self.profile = profile
+        self.tone = tone
+        self.lexicon = lexicon
+    }
+}
+
+/// How long the AI step may take before the job fails with a timeout. Not a setting.
+public enum Budget {
+    public static func ai(local: Bool, audio: Duration) -> Duration {
+        if local { return .seconds(30) }
+        return max(.seconds(8), .seconds(6) + audio * 0.3)
+    }
+}
+
+// MARK: - Pipeline
+
+/// The whole AI path for one job: transcribe → clean up → dictionary → the mode's operation → output.
+public struct Pipeline: Sendable {
+    public let transcriber: any Transcriber
+    public let chat: any ChatModel
+
+    public init(transcriber: any Transcriber, chat: any ChatModel) {
+        self.transcriber = transcriber
+        self.chat = chat
     }
 
-    /// Run one complete Mode pipeline. Callers do not orchestrate individual ASR/LLM stages.
-    public func run(_ audio: AudioSamples, mode: Mode,
-                    options: PipelineOptions = .init()) async throws -> PipelineResult {
+    public func run(_ audio: AudioSamples, _ request: Request, _ context: JobContext, budget: Duration?,
+                    stage report: @escaping @Sendable (Stage) -> Void = { _ in })
+    async throws(PipelineFailure) -> PipelineResult {
         let clock = ContinuousClock()
         let start = clock.now
-        onProgress?(0.05, "transcribing")
-        let raw = try await asr.transcribe(
-            audio.trimmedSilence(), languageHint: options.languageHint)
-        let corrected = dictionary.apply(to: ASRCleanup.strip(raw))
-        guard !corrected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return PipelineResult(
-                text: "", rawTranscript: raw,
-                elapsed: start.duration(to: clock.now).asSeconds)
+
+        report(.transcribing)
+        let raw: String
+        do {
+            raw = try await transcriber.transcribe(
+                audio.trimmedSilence(),
+                hints: RecognitionHints(language: context.language,
+                                        vocabulary: context.lexicon.recognitionHints()))
+        } catch {
+            throw PipelineFailure(reason: Failure(error), stage: .transcribing, transcript: nil)
+        }
+        if Task.isCancelled { throw PipelineFailure(reason: .cancelled, stage: .transcribing, transcript: nil) }
+
+        let transcript = context.lexicon.correct(ASRCleanup.strip(raw))
+        func result(_ output: Output) -> PipelineResult {
+            PipelineResult(transcript: transcript, output: output, elapsed: start.duration(to: clock.now))
+        }
+        if transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return result(.nothing(.noSpeech)) }
+        if Transcript.isFillerOnly(transcript) { return result(.nothing(.nothingSaid)) }
+
+        let prompts = PromptContext(spokenLanguage: context.language, profile: context.profile,
+                                    tone: context.tone, terms: context.lexicon.promptTerms())
+        let stage: Stage
+        let prompt: Prompt
+        let parse: @Sendable (String) -> Output?
+        switch request {
+        case .dictate:
+            stage = .polishing
+            prompt = Polish.prompt(transcript, prompts)
+            parse = { Self.output(Polish.parse($0, source: transcript)) }
+        case let .translate(target):
+            stage = .translating
+            prompt = Translate.prompt(transcript, to: target, prompts)
+            parse = { Self.output(Translate.parse($0, source: transcript)) }
+        case let .ask(selection):
+            if selection.isEmpty, let intent = AskIntent.parse(transcript) { return result(.open(intent.url)) }
+            stage = .answering
+            prompt = Ask.prompt(request: transcript, selection: selection, prompts)
+            parse = { Ask.parse($0, selection: selection) }
         }
 
-        var insertedDraft: String?
-        if case .dictation = mode,
-           options.fastDraftEnabled,
-           !PolishOutput.acceptsEmpty(for: corrected),
-           let onDraft {
-            let draft = options.voiceCommandsEnabled ? VoiceCommands.apply(corrected) : corrected
-            if !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               await onDraft(draft) {
-                insertedDraft = draft
+        report(stage)
+        // One retry on an empty reply: some cloud models occasionally return nothing for real speech.
+        for _ in 0..<2 {
+            let reply = await self.reply(to: prompt, budget: budget)
+            if Task.isCancelled { throw PipelineFailure(reason: .cancelled, stage: stage, transcript: transcript) }
+            switch reply {
+            case nil:
+                throw PipelineFailure(reason: .timeout, stage: stage, transcript: transcript)
+            case let .failure(error):
+                throw PipelineFailure(reason: Failure(error), stage: stage, transcript: transcript)
+            case let .success(text):
+                if let output = parse(text) { return result(output) }
             }
         }
-
-        let final: String
-        switch mode {
-        case .dictation:
-            onProgress?(0.45, "polishing")
-            final = try await polishWithBudget(corrected, context: options.context)
-        case .translation(let target):
-            onProgress?(0.45, "translating")
-            guard let translated = try await withBudget({
-                try await llm.polishAndTranslate(
-                    corrected, to: target, context: options.context)
-            }) else {
-                throw ProviderError.latencyBudgetExceeded
-            }
-            final = translated
-        case .ask:
-            onProgress?(0.45, "asking")
-            guard let answer = try await withBudget({
-                try await llm.ask(
-                    corrected, selection: options.askSelection, context: options.context)
-            }) else {
-                throw ProviderError.latencyBudgetExceeded
-            }
-            final = answer
-        }
-
-        let commandOutput = options.voiceCommandsEnabled ? VoiceCommands.apply(final) : final
-        let output = commandOutput.trimmingCharacters(in: .whitespacesAndNewlines)
-        onProgress?(1.0, "done")
-        let elapsed = start.duration(to: clock.now).asSeconds
-        let skipped: Bool
-        switch mode {
-        case .ask:
-            skipped = false
-        case .dictation, .translation:
-            skipped = output.trimmingCharacters(in: .whitespacesAndNewlines)
-                == corrected.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-        return PipelineResult(
-            text: output,
-            rawTranscript: raw,
-            elapsed: elapsed,
-            draftText: insertedDraft,
-            polishSkipped: skipped)
+        throw PipelineFailure(reason: .emptyReply, stage: stage, transcript: transcript)
     }
 
-    /// Polish under the latency budget: timeout is a hard error, never silently fall back to the
-    /// unpolished transcript — the user explicitly wants polished output or a visible failure.
-    /// One retry on empty output: cloud models (deepseek-flash non-thinking) occasionally return
-    /// "" for real speech; retrying beats showing the user an unpolished transcript.
-    private func polishWithBudget(_ text: String, context: PolishContext) async throws -> String {
-        var polished = try await polishAttempt(text, context: context)
-        if polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           !PolishOutput.acceptsEmpty(for: text) {
-            polished = try await polishAttempt(text, context: context)
+    /// nil = empty reply for real speech (retry).
+    private static func output(_ parsed: Parsed) -> Output? {
+        switch parsed {
+        case let .text(text): .insert(text)
+        case .nothingSaid: .nothing(.nothingSaid)
+        case .empty: nil
         }
-        if polished.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return PolishOutput.acceptsEmpty(for: text) ? "" : text
-        }
-        return polished
     }
 
-    private func polishAttempt(_ text: String, context: PolishContext) async throws -> String {
-        guard let rawPolished = try await withBudget({ try await llm.polish(text, context: context) }) else {
-            throw ProviderError.latencyBudgetExceeded
+    /// nil = the budget ran out first. The losing side is cancelled; engine work that ignores cancellation
+    /// (MLX generation) finishes in the background, so the user is never held hostage by it.
+    private func reply(to prompt: Prompt, budget: Duration?) async -> Result<String, EngineError>? {
+        let chat = self.chat
+        let operation: @Sendable () async -> Result<String, EngineError> = {
+            do throws(EngineError) { return .success(try await chat.reply(to: prompt)) } catch { return .failure(error) }
         }
-        return PolishOutput.normalize(rawPolished, source: text)
+        guard let budget else { return await operation() }
+        return await Deadline.race(budget, operation)
     }
+}
 
-    /// Run `op` racing the budget. Returns nil on timeout; no budget = just run `op`.
-    /// The losing task is cancelled (providers that can't observe cancellation finish in the background).
-    private func withBudget(_ op: @escaping @Sendable () async throws -> String) async throws -> String? {
-        guard let budget = llmTimeout, budget > 0 else { return try await op() }
-        let state = RaceGate()
-        return try await withCheckedThrowingContinuation { continuation in
-            let work = Task {
-                do {
-                    let value = try await op()
-                    state.finish { continuation.resume(returning: value) }
-                } catch {
-                    state.finish { continuation.resume(throwing: error) }
+enum Deadline {
+    /// Returns `operation`'s value, or nil if `budget` passes (or the calling task is cancelled) first.
+    static func race<T: Sendable>(_ budget: Duration, _ operation: @escaping @Sendable () async -> T) async -> T? {
+        let gate = RaceGate<T?>()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                gate.arm(continuation)
+                let work = Task { gate.finish(await operation()) }
+                let timer = Task {
+                    try? await Task.sleep(for: budget)
+                    gate.finish(nil)
                 }
+                gate.track([work, timer])
             }
-            let timer = Task {
-                try? await Task.sleep(for: .seconds(budget))
-                state.finish { continuation.resume(returning: nil) }
-            }
-            state.setTasks([work, timer])
+        } onCancel: {
+            gate.finish(nil)
         }
     }
 }
 
-/// Resume-once gate for racing tasks that may not observe cancellation
-/// (losers are cancelled; uncancellable ops finish in the background).
-public final class RaceGate: @unchecked Sendable {
-    public init() {}
-
+/// Resumes a continuation exactly once, whichever racer finishes first, and cancels the others.
+final class RaceGate<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
+    private var continuation: CheckedContinuation<T, Never>?
+    private var early: T?
     private var finished = false
     private var tasks: [Task<Void, Never>] = []
 
-    public func setTasks(_ tasks: [Task<Void, Never>]) {
+    func arm(_ continuation: CheckedContinuation<T, Never>) {
+        lock.lock()
+        if finished, let early {
+            lock.unlock()
+            continuation.resume(returning: early)
+        } else {
+            self.continuation = continuation
+            lock.unlock()
+        }
+    }
+
+    func track(_ tasks: [Task<Void, Never>]) {
         lock.lock()
         if finished {
             lock.unlock()
@@ -213,20 +248,16 @@ public final class RaceGate: @unchecked Sendable {
         }
     }
 
-    public func finish(_ resume: () -> Void) {
+    func finish(_ value: T) {
         lock.lock()
         guard !finished else { lock.unlock(); return }
         finished = true
+        let continuation = self.continuation
+        self.continuation = nil
+        if continuation == nil { early = value }
         let tasks = self.tasks
         lock.unlock()
         tasks.forEach { $0.cancel() }
-        resume()
-    }
-}
-
-extension Duration {
-    var asSeconds: TimeInterval {
-        let c = components
-        return TimeInterval(c.seconds) + TimeInterval(c.attoseconds) / 1e18
+        continuation?.resume(returning: value)
     }
 }
