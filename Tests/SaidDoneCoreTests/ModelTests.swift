@@ -99,7 +99,8 @@ struct ReadinessTests {
         #expect(Readiness.issues(prefs, allGood) == [.credentialMissing("openai")])
         prefs.ai = .cloud(CloudPreset.chat("ollama")!.defaultEndpoint)
         prefs.speech = .volcengine(appID: " ", resource: .turbo)
-        #expect(Readiness.issues(prefs, allGood) == [.volcengineAppIDMissing, .credentialMissing(.volcengine)])
+        #expect(Readiness.issues(prefs, allGood)
+                == [.volcengineAppIDMissing, .aiModelNotChosen, .credentialMissing(.volcengine)])
     }
 }
 

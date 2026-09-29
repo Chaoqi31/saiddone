@@ -97,18 +97,21 @@ public struct CloudEndpoint: Codable, Hashable, Sendable {
 }
 
 /// How a vendor lets a request turn reasoning off. Dictation cleanup needs no chain of thought, and thinking
-/// multiplies latency; vendors that don't know the parameter reject the request, so it is sent only where accepted.
+/// multiplies latency. Support varies by model even within a vendor, so the transport drops the switch for a model
+/// that rejects it.
 public enum ThinkingSwitch: Sendable {
     case unsupported
     /// `"thinking": {"type": "disabled"}` (DeepSeek, Zhipu GLM).
     case thinkingType
+    /// `"reasoning_effort": "none"` (OpenAI).
+    case reasoningEffort
 }
 
 public struct CloudPreset: Identifiable, Hashable, Sendable {
     public let id: VendorID
     public let name: String
     public let baseURL: URL
-    /// Suggestions; the first is the default. Any model name can be typed.
+    /// Known-good suggestions, the first being the default. Empty = pick from the endpoint's own model list.
     public let models: [String]
     public let requiresKey: Bool
     public let thinking: ThinkingSwitch
@@ -121,49 +124,41 @@ public struct CloudPreset: Identifiable, Hashable, Sendable {
     public func hash(into hasher: inout Hasher) { hasher.combine(id) }
 
     public static let deepseek = CloudPreset(
-        "deepseek", "DeepSeek", "https://api.deepseek.com/v1", ["deepseek-chat"],
+        "deepseek", "DeepSeek", "https://api.deepseek.com", ["deepseek-flash", "deepseek-v4-pro"],
         thinking: .thinkingType, keyURL: "https://platform.deepseek.com/api_keys")
 
     public static let chat: [CloudPreset] = [
         deepseek,
-        CloudPreset("openai", "OpenAI", "https://api.openai.com/v1", ["gpt-4.1-mini", "gpt-4o-mini", "gpt-4.1"],
-                    keyURL: "https://platform.openai.com/api-keys"),
-        CloudPreset("zhipu", "Zhipu GLM", "https://open.bigmodel.cn/api/paas/v4", ["glm-4.5-air", "glm-4.6", "glm-4.5"],
+        CloudPreset("openai", "OpenAI", "https://api.openai.com/v1", ["gpt-5.6-luna", "gpt-5.6-terra"],
+                    thinking: .reasoningEffort, keyURL: "https://platform.openai.com/api-keys"),
+        CloudPreset("zhipu", "Zhipu GLM", "https://open.bigmodel.cn/api/paas/v4", ["glm-5.2"],
                     thinking: .thinkingType, keyURL: "https://open.bigmodel.cn/usercenter/apikeys"),
-        CloudPreset("moonshot", "Moonshot Kimi", "https://api.moonshot.cn/v1", ["kimi-k2-turbo-preview", "kimi-k2-0905-preview"],
+        CloudPreset("moonshot", "Moonshot Kimi", "https://api.moonshot.cn/v1", [],
                     keyURL: "https://platform.moonshot.cn/console/api-keys"),
-        CloudPreset("siliconflow", "SiliconFlow", "https://api.siliconflow.cn/v1",
-                    ["Qwen/Qwen3-235B-A22B-Instruct-2507", "deepseek-ai/DeepSeek-V3"],
+        CloudPreset("siliconflow", "SiliconFlow", "https://api.siliconflow.cn/v1", [],
                     keyURL: "https://cloud.siliconflow.cn/account/ak"),
-        CloudPreset("openrouter", "OpenRouter", "https://openrouter.ai/api/v1",
-                    ["openai/gpt-4.1-mini", "google/gemini-2.5-flash", "anthropic/claude-sonnet-4.5"],
+        CloudPreset("openrouter", "OpenRouter", "https://openrouter.ai/api/v1", [],
                     keyURL: "https://openrouter.ai/settings/keys"),
-        CloudPreset("groq", "Groq", "https://api.groq.com/openai/v1", ["llama-3.3-70b-versatile", "openai/gpt-oss-120b"],
-                    keyURL: "https://console.groq.com/keys"),
-        CloudPreset("xai", "xAI", "https://api.x.ai/v1", ["grok-4-fast-non-reasoning", "grok-4"],
-                    keyURL: "https://console.x.ai"),
-        CloudPreset("cerebras", "Cerebras", "https://api.cerebras.ai/v1", ["llama-3.3-70b", "gpt-oss-120b"],
-                    keyURL: "https://cloud.cerebras.ai"),
-        CloudPreset("ollama", "Ollama", "http://localhost:11434/v1", ["qwen3:4b", "llama3.2"], requiresKey: false),
-        CloudPreset("lmstudio", "LM Studio", "http://localhost:1234/v1", ["local-model"], requiresKey: false),
-        CloudPreset(VendorID.customChat.rawValue, "Custom", "https://api.example.com/v1", ["model-name"], requiresKey: false),
+        CloudPreset("groq", "Groq", "https://api.groq.com/openai/v1", [], keyURL: "https://console.groq.com/keys"),
+        CloudPreset("ollama", "Ollama", "http://localhost:11434/v1", [], requiresKey: false),
+        CloudPreset("lmstudio", "LM Studio", "http://localhost:1234/v1", [], requiresKey: false),
+        CloudPreset(VendorID.customChat.rawValue, "Custom", "https://api.example.com/v1", [], requiresKey: false),
     ]
 
     public static let speech: [CloudPreset] = [
-        CloudPreset("openai", "OpenAI", "https://api.openai.com/v1",
-                    ["gpt-4o-mini-transcribe", "gpt-4o-transcribe", "whisper-1"],
+        CloudPreset("openai", "OpenAI", "https://api.openai.com/v1", ["gpt-transcribe", "gpt-4o-mini-transcribe"],
                     keyURL: "https://platform.openai.com/api-keys"),
-        CloudPreset("groq", "Groq", "https://api.groq.com/openai/v1", ["whisper-large-v3-turbo", "whisper-large-v3"],
+        CloudPreset("groq", "Groq", "https://api.groq.com/openai/v1", ["whisper-large-v3-turbo"],
                     keyURL: "https://console.groq.com/keys"),
         CloudPreset("siliconflow", "SiliconFlow", "https://api.siliconflow.cn/v1", ["FunAudioLLM/SenseVoiceSmall"],
                     keyURL: "https://cloud.siliconflow.cn/account/ak"),
-        CloudPreset(VendorID.customSpeech.rawValue, "Custom", "https://api.example.com/v1", ["model-name"], requiresKey: false),
+        CloudPreset(VendorID.customSpeech.rawValue, "Custom", "https://api.example.com/v1", [], requiresKey: false),
     ]
 
     public static func chat(_ vendor: VendorID) -> CloudPreset? { chat.first { $0.id == vendor } }
     public static func speech(_ vendor: VendorID) -> CloudPreset? { speech.first { $0.id == vendor } }
 
-    /// Display name for any vendor, including ones only reachable through a preset of the other half.
+    /// Display name for any vendor.
     public static func name(_ vendor: VendorID) -> String {
         if vendor == .volcengine { return "Volcengine" }
         return (chat(vendor) ?? speech(vendor))?.name ?? vendor.rawValue
