@@ -1,10 +1,13 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// C2 of the v2 rewrite: the core and the engines build; the app shell is rewritten on top of them in C3.
 let package = Package(
     name: "SaidDone",
     platforms: [.macOS(.v14)],
+    products: [
+        .executable(name: "SaidDone", targets: ["SaidDoneApp"]),
+        .executable(name: "saiddone-cli", targets: ["saiddone-cli"]),
+    ],
     dependencies: [
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "1.1.0"),
         .package(url: "https://github.com/ml-explore/mlx-swift-examples", from: "2.29.1"),
@@ -25,6 +28,8 @@ let package = Package(
                 .product(name: "Hub", package: "swift-transformers"),
             ]
         ),
+        // The menu-bar app: stores, hotkeys, recording, insertion and every window. Tests import it directly.
+        .executableTarget(name: "SaidDoneApp", dependencies: ["SaidDoneCore", "SaidDoneEngines"]),
         // Runs the real engines on an audio file: the end-to-end check without a microphone or UI.
         .executableTarget(
             name: "saiddone-cli",
@@ -35,5 +40,6 @@ let package = Package(
         ),
         .testTarget(name: "SaidDoneCoreTests", dependencies: ["SaidDoneCore"]),
         .testTarget(name: "SaidDoneEnginesTests", dependencies: ["SaidDoneEngines"]),
+        .testTarget(name: "SaidDoneAppTests", dependencies: ["SaidDoneApp"]),
     ]
 )

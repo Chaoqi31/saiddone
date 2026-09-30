@@ -12,11 +12,11 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${DEVID:?set DEVID}"; : "${APPLE_ID:?set APPLE_ID}"; : "${TEAM_ID:?set TEAM_ID}"; : "${APP_PW:?set APP_PW}"
 
-./scripts/bundle-xcode.sh
+./scripts/bundle.sh
 APP="dist/SaidDone.app"; DMG="dist/SaidDone.dmg"
 
 echo "Signing with Developer ID (hardened runtime)…"
-codesign --force --deep --options runtime --timestamp --sign "$DEVID" "$APP"
+codesign --force --deep --options runtime --timestamp --entitlements scripts/SaidDone.entitlements --sign "$DEVID" "$APP"
 
 echo "Building DMG…"
 rm -f "$DMG"

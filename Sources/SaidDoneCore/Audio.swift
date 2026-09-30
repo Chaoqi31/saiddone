@@ -1,7 +1,6 @@
 import Foundation
 
-/// Mono PCM audio at a known sample rate, ready for an ASR Provider.
-/// ASR engines expect 16 kHz mono float [-1, 1].
+/// Mono PCM audio at a known sample rate. Speech engines expect 16 kHz mono float in [-1, 1].
 public struct AudioSamples: Sendable {
     public static let targetSampleRate: Double = 16_000
 
@@ -78,5 +77,11 @@ public struct AudioSamples: Sendable {
         str("data"); u32(UInt32(dataSize))
         for s in samples { u16(UInt16(bitPattern: Int16(max(-1, min(1, s)) * 32767))) }
         return d
+    }
+}
+
+extension Duration {
+    public var seconds: Double {
+        Double(components.seconds) + Double(components.attoseconds) / 1e18
     }
 }

@@ -1,17 +1,10 @@
 #!/usr/bin/env bash
-# Build the MLX-enabled app and install it to /Applications so it shows in Launchpad / 应用程序
-# with its icon. Clicking the icon launches it (and opens the window).
+# Build the app and put it in /Applications, where Launchpad and Open at Login find it.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-./scripts/bundle-xcode.sh
+./scripts/bundle.sh
 DEST="/Applications/SaidDone.app"
-rm -rf "$DEST" 2>/dev/null || { echo "Can't write $DEST — drag dist/SaidDone.app into /Applications manually."; exit 1; }
+rm -rf "$DEST" 2>/dev/null || { echo "Can't write $DEST. Drag dist/SaidDone.app into /Applications instead."; exit 1; }
 cp -R dist/SaidDone.app "$DEST"
-if [ -f .env ]; then
-  SUPPORT="$HOME/Library/Application Support/SaidDone"
-  mkdir -p "$SUPPORT"
-  cp .env "$SUPPORT/.env"
-  echo "Synced .env -> $SUPPORT/.env"
-fi
-echo "Installed -> $DEST"
+echo "Installed $DEST"

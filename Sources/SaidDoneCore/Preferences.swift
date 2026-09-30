@@ -14,7 +14,7 @@ public struct Preferences: Codable, Equatable, Sendable {
     public var microphone: MicrophoneChoice = .automatic
     public var muteWhileRecording = false
     public var sounds = true
-    public var showInDock = false
+    public var showInDock = true
     public var appearance: Appearance = .system
     public var interfaceLanguage: InterfaceLanguage = .system
     public var historyRetention: Retention = .forever

@@ -71,7 +71,6 @@ public struct SessionMachine: Sendable {
     }
 
     public var isBusy: Bool { recording != nil || !jobs.isEmpty }
-    public var runningJob: JobID? { jobs.first.flatMap { $0.ready ? $0.id : nil } }
 
     public mutating func handle(_ event: SessionEvent) -> [SessionEffect] {
         switch event {
@@ -157,13 +156,13 @@ public struct SessionMachine: Sendable {
         return effects
     }
 
-    /// Esc and ✕ cancel the recording first, then the running job.
+    /// Esc and ✕ cancel the recording first, then the job at the head of the queue, including one still being saved.
     private mutating func cancel() -> [SessionEffect] {
         if let recording {
             self.recording = nil
             return [.discardRecording(recording.id)]
         }
-        guard let running = runningJob else { return [] }
-        return [.cancelJob(running)]
+        guard let head = jobs.first else { return [] }
+        return [.cancelJob(head.id)]
     }
 }

@@ -87,6 +87,25 @@ struct LexiconTests {
         #expect(prompt(nil, []) == nil)
     }
 
+    @Test func editingRespellsAndMergesIntoAnExistingSpelling() throws {
+        var lexicon = lexicon([("Vercel", ["Verso"]), ("Swift", [])])
+        lexicon.learn([Correction(heard: "Sweeft", meant: "SwiftUI")], at: t0)
+        let learned = try #require(lexicon.terms.first { $0.text == "SwiftUI" })
+        let respelled = lexicon.edit(learned.id, text: " SwiftUI ", misheard: ["swift ui", ""])
+        #expect(respelled)
+        let edited = try #require(lexicon.terms.first { $0.id == learned.id })
+        #expect(edited.origin == .manual)
+        #expect(edited.misheard == ["swift ui"])
+
+        let swift = try #require(lexicon.terms.first { $0.text == "Swift" })
+        let merged = lexicon.edit(swift.id, text: "vercel", misheard: ["vessel"])
+        #expect(merged)
+        #expect(lexicon.terms.map(\.text) == ["Vercel", "SwiftUI"])
+        #expect(lexicon.terms[0].misheard == ["Verso", "vessel"])
+        let emptied = lexicon.edit(edited.id, text: " , ", misheard: [])
+        #expect(!emptied)
+    }
+
     @Test func csvRoundTripsAndMerges() {
         var lexicon = Lexicon()
         #expect(lexicon.importCSV("Vercel,Verso|vessel\n\nSaidDone\n张三,章三\n", at: t0) == 3)

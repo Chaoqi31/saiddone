@@ -137,6 +137,24 @@ public struct Lexicon: Codable, Equatable, Sendable {
 
     public mutating func remove(_ id: Term.ID) { terms.removeAll { $0.id == id } }
 
+    /// Rewrites a term's spelling and mishearings, which makes it manual. Renaming it to another term's spelling
+    /// merges the two. Returns false when the new spelling is empty.
+    @discardableResult
+    public mutating func edit(_ id: Term.ID, text: String, misheard: [String]) -> Bool {
+        guard let text = Term.clean(text), let index = terms.firstIndex(where: { $0.id == id }) else { return false }
+        let variants = misheard.compactMap(Term.clean)
+        if let other = self.index(of: text), other != index {
+            terms[other].origin = .manual
+            merge(variants, into: other)
+            terms.remove(at: index)
+        } else {
+            terms[index].text = text
+            terms[index].origin = .manual
+            terms[index].misheard = dedupe(variants, excluding: text)
+        }
+        return true
+    }
+
     /// One term per line: `term` or `term,misheard|misheard`. Merges into existing terms. Returns the number of
     /// lines imported.
     @discardableResult

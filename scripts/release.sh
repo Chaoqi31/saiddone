@@ -6,7 +6,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-./scripts/bundle-xcode.sh
+./scripts/bundle.sh
 
 DMG="dist/SaidDone.dmg"
 STAGE="$(mktemp -d)"

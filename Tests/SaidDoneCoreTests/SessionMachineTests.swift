@@ -94,6 +94,16 @@ struct SessionMachineTests {
         #expect(!m.isBusy)
     }
 
+    /// The host drops a job cancelled before it is ready once it has been saved.
+    @Test func escapeRightAfterFinishingCancelsTheJobBeingSaved() {
+        var m = machine()
+        _ = m.handle(.gesture(.pressed(.dictation, g1)))
+        _ = m.handle(.gesture(.released(.dictation, g1, held: .seconds(1))))
+        #expect(m.handle(.gesture(.escape)) == [.cancelJob(job1)])
+        #expect(m.handle(.jobDropped(job1)) == [])
+        #expect(!m.isBusy)
+    }
+
     @Test func pressDuringProcessingRecordsAndJobsRunInOrder() {
         var m = machine()
         _ = m.handle(.gesture(.pressed(.dictation, g1)))
