@@ -43,6 +43,19 @@ struct PreferencesTests {
         #expect(p.tone(for: "x") == nil)
         #expect(Personalization().tone(for: nil) == nil)
     }
+
+    @Test func aNewInstallStartsFromTheSystemLanguageAndRegion() {
+        let chinese = Preferences.firstRun(languages: ["zh-Hans-CN", "en-CN"], region: "CN")
+        #expect(chinese.spokenLanguage == .fixed(.chinese))
+        #expect(chinese.translationTarget == .english)
+        #expect(chinese.downloadMirror)
+        let american = Preferences.firstRun(languages: ["en-US"], region: "US")
+        #expect(american.spokenLanguage == .fixed(.english))
+        #expect(american.translationTarget == .chinese)
+        #expect(!american.downloadMirror)
+        #expect(Preferences.firstRun(languages: ["pt-BR"], region: "BR").spokenLanguage == .detect)
+        #expect(Preferences.firstRun(languages: [], region: nil).spokenLanguage == .fixed(.english))
+    }
 }
 
 struct MicrophoneChoiceTests {

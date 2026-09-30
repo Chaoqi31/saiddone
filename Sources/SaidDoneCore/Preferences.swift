@@ -187,3 +187,16 @@ public enum MicrophoneChoice: Codable, Hashable, Sendable {
         }
     }
 }
+
+extension Preferences {
+    /// Defaults for a new install, from the system's first language and its region: the language the user most
+    /// likely speaks, Chinese ⇄ English translation, and the Hugging Face mirror where Hugging Face is blocked.
+    public static func firstRun(languages: [String], region: String?) -> Preferences {
+        var prefs = Preferences()
+        let primary = languages.first.map { Locale(identifier: $0).language.languageCode?.identifier ?? $0 } ?? "en"
+        prefs.spokenLanguage = Language.spoken.first { $0.rawValue == primary }.map(SpokenLanguage.fixed) ?? .detect
+        prefs.translationTarget = primary == Language.english.rawValue ? .chinese : .english
+        prefs.downloadMirror = region == "CN"
+        return prefs
+    }
+}
