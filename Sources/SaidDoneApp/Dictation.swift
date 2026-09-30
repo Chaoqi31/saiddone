@@ -41,6 +41,8 @@ final class Dictation {
     /// Esc means something while a recording or a job is live.
     var isBusy: Bool { machine.isBusy }
 
+    static let longestRecording: Duration = .seconds(600)
+
     private var machine = SessionMachine(makeJobID: UUID.init)
     private var stage: Stage?
     @ObservationIgnored private var recordingStarted = Date.now
@@ -167,6 +169,11 @@ final class Dictation {
         recordingStarted = .now
         if mode == .ask { captureSelection(for: id) }
         if settings.prefs.sounds { Sounds.start.play() }
+        // A hands-free recording the user forgot about ends by itself.
+        Task {
+            try? await Task.sleep(for: Self.longestRecording)
+            if machine.recording?.id == id { raise(.finish) }
+        }
         if settings.prefs.muteWhileRecording {
             // After the start chime, which plays through the output being muted.
             Task {

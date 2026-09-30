@@ -64,6 +64,9 @@ public actor Engines {
         self.init(files: files, makeSession: HTTP.session(proxy:))
     }
 
+    /// Whether this build can run on-device AI at all (it needs MLX's compiled Metal shaders).
+    public static var canRunOnDeviceAI: Bool { MLXChatModel.canRun }
+
     init(files: ModelFiles, makeSession: @escaping @Sendable (Proxy?) -> URLSession) {
         self.files = files
         self.makeSession = makeSession

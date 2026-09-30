@@ -45,6 +45,8 @@
 "Add your %@ API key" = "添加你的 %@ API 密钥";
 "Choose a speech model" = "选择语音模型";
 "Choose an AI model" = "选择 AI 模型";
+"On-device AI doesn’t work in this build" = "这个版本无法在本机运行 AI";
+"It was built without Xcode’s Metal shaders. Choose a cloud AI in Speech & AI." = "它构建时没有包含 Xcode 的 Metal 着色器。请在“语音与 AI”中选择云端 AI。";
 "SaidDone needs the microphone to hear you." = "SaidDone 需要麦克风才能听到你说话。";
 "Needed for the shortcuts and to type into other apps." = "快捷键和向其他 App 输入文字都需要这项权限。";
 "In Keyboard settings, set “Press 🌐 key to” to “Do Nothing”, so fn only starts SaidDone." = "在“键盘”设置中，把“按下 🌐 键时”设为“不执行任何操作”，这样 fn 键只会启动 SaidDone。";
@@ -92,6 +94,7 @@
 "The service sent an answer SaidDone can’t read." = "服务返回了 SaidDone 无法识别的结果。";
 "The model isn’t downloaded." = "模型尚未下载。";
 "No API key." = "没有 API 密钥。";
+"This build of SaidDone can’t run that engine." = "这个版本的 SaidDone 无法运行该引擎。";
 "The AI returned nothing." = "AI 没有返回任何内容。";
 "Cancelled." = "已取消。";
 "SaidDone quit before this finished." = "SaidDone 在完成前退出了。";

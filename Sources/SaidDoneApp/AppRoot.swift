@@ -87,7 +87,7 @@ final class AppRoot: NSObject, NSApplicationDelegate {
         case let .modelNotInstalled(model):
             library.download(model, mirror: settings.prefs.downloadMirror)
             if settings.prefs.onboardingCompleted { windows.showMain(.engines) }
-        case .credentialMissing, .speechModelNotChosen, .aiModelNotChosen:
+        case .credentialMissing, .speechModelNotChosen, .aiModelNotChosen, .onDeviceAIUnavailable:
             if settings.prefs.onboardingCompleted { windows.showMain(.engines) } else { windows.showOnboarding() }
         }
     }

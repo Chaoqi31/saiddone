@@ -5,9 +5,9 @@ import Testing
 @testable import SaidDoneApp
 
 /// Draws every screen to PNGs in /tmp/saiddone-render for review, in English and Chinese. Opt in with
-/// SAIDDONE_RENDER=1; each render must also contain more than a blank background.
+/// SAIDDONE_UI=1; each render must also contain more than a blank background.
 @MainActor
-@Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["SAIDDONE_RENDER"] != nil))
+@Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["SAIDDONE_UI"] != nil))
 struct RenderTests {
     private static let output = URL(fileURLWithPath: "/tmp/saiddone-render")
     private static let resources = URL(fileURLWithPath: #filePath).deletingLastPathComponent()

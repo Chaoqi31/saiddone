@@ -8,6 +8,8 @@ public enum Issue: Hashable, Sendable {
     /// 🌐 is set to switch input sources, show emoji or start Dictation, so pressing fn does that too.
     case globeKeyAssigned
     case modelNotInstalled(LocalModel)
+    /// On-device AI is chosen, but this build can't run it.
+    case onDeviceAIUnavailable
     case credentialMissing(VendorID)
     /// A cloud endpoint has no model name yet.
     case speechModelNotChosen
@@ -24,14 +26,17 @@ public struct SetupFacts: Equatable, Sendable {
     public var installed: Set<LocalModel>
     /// Vendors with a non-empty key.
     public var credentials: Set<VendorID>
+    /// The build carries what on-device AI needs to run.
+    public var onDeviceAI: Bool
 
     public init(microphoneAllowed: Bool, accessibilityAllowed: Bool, globeKeyFree: Bool,
-                installed: Set<LocalModel>, credentials: Set<VendorID>) {
+                installed: Set<LocalModel>, credentials: Set<VendorID>, onDeviceAI: Bool) {
         self.microphoneAllowed = microphoneAllowed
         self.accessibilityAllowed = accessibilityAllowed
         self.globeKeyFree = globeKeyFree
         self.installed = installed
         self.credentials = credentials
+        self.onDeviceAI = onDeviceAI
     }
 }
 
@@ -45,7 +50,10 @@ public enum Readiness {
         if !facts.accessibilityAllowed { issues.append(.accessibilityNotAllowed) }
         if case let .cloud(endpoint) = prefs.speech, endpoint.model.isEmpty { issues.append(.speechModelNotChosen) }
         if case let .cloud(endpoint) = prefs.ai, endpoint.model.isEmpty { issues.append(.aiModelNotChosen) }
-        for model in [prefs.speech.localModel, prefs.ai.localModel].compactMap({ $0 })
+        // No point downloading an on-device AI model this build can't run.
+        let aiRuns = prefs.ai.localModel == nil || facts.onDeviceAI
+        if !aiRuns { issues.append(.onDeviceAIUnavailable) }
+        for model in [prefs.speech.localModel, aiRuns ? prefs.ai.localModel : nil].compactMap({ $0 })
         where !facts.installed.contains(model) {
             issues.append(.modelNotInstalled(model))
         }

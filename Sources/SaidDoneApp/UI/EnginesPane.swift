@@ -107,7 +107,15 @@ struct AISection: View {
         Section {
             Picker(tr("Engine"), selection: kind) {
                 Text(tr("Cloud service")).tag(Kind.cloud)
-                Text(tr("On this Mac")).tag(Kind.local)
+                // A build without MLX's shaders offers it only when it is already chosen, and then says why it fails.
+                if Engines.canRunOnDeviceAI || prefs.ai.isLocal {
+                    Text(tr("On this Mac")).tag(Kind.local)
+                }
+            }
+            if prefs.ai.isLocal, !Engines.canRunOnDeviceAI {
+                IssueRow(issue: .onDeviceAIUnavailable, library: root.library) { _ in
+                    root.settings.prefs.ai = .cloud(CloudPreset.deepseek.defaultEndpoint)
+                }
             }
             switch prefs.ai {
             case let .qwen(chosen):

@@ -87,7 +87,9 @@ struct EnginesTests {
     @Test func missingLocalModelsFailPreparation() async throws {
         let engines = Engines(files: ModelFiles(root: try temporaryDirectory()))
         #expect(await failure { try await engines.prepare(setup(.whisper(.largeV3Turbo), deepseek)) } == .modelMissing)
-        #expect(await failure { try await engines.test(AISetup(.qwen(.qwen3_4B), key: "", proxy: nil)) } == .modelMissing)
+        // A SwiftPM test build has no MLX shaders, so it must refuse before touching MLX, which would abort.
+        #expect(await failure { try await engines.test(AISetup(.qwen(.qwen3_4B), key: "", proxy: nil)) }
+                == (Engines.canRunOnDeviceAI ? .modelMissing : .unsupported))
     }
 
     @Test func testingACloudHalfSendsARealRequest() async throws {

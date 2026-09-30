@@ -3,6 +3,7 @@ import ApplicationServices
 import AVFoundation
 import Observation
 import SaidDoneCore
+import SaidDoneEngines
 
 /// Microphone, Accessibility and 🌐-key state, refreshed when SaidDone becomes active and polled while Accessibility
 /// is still missing (macOS sends no notification when it is granted).
@@ -90,7 +91,8 @@ struct SetupStatus {
                    accessibilityAllowed: permissions.accessibility,
                    globeKeyFree: permissions.globeKeyFree,
                    installed: library.installed,
-                   credentials: vault.state == .loading ? Self.everyVendor : vault.present)
+                   credentials: vault.state == .loading ? Self.everyVendor : vault.present,
+                   onDeviceAI: Engines.canRunOnDeviceAI)
     }
 
     var issues: [Issue] { Readiness.issues(settings.prefs, facts) }

@@ -54,6 +54,8 @@ public enum EngineError: Error, Equatable, Sendable {
     case badResponse
     case modelMissing
     case missingCredential
+    /// This Mac or this build can't run the engine (on-device AI without its Metal shaders).
+    case unsupported
     case cancelled
 }
 

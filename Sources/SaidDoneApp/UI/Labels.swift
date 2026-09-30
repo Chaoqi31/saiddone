@@ -50,6 +50,7 @@ extension Issue {
         case .accessibilityNotAllowed: tr("Allow Accessibility access")
         case .globeKeyAssigned: tr("Free up the 🌐 key")
         case let .modelNotInstalled(model): tr("Download %@", model.name)
+        case .onDeviceAIUnavailable: tr("On-device AI doesn’t work in this build")
         case let .credentialMissing(vendor): tr("Add your %@ API key", CloudPreset.name(vendor))
         case .speechModelNotChosen: tr("Choose a speech model")
         case .aiModelNotChosen: tr("Choose an AI model")
@@ -63,6 +64,7 @@ extension Issue {
         case .globeKeyAssigned:
             tr("In Keyboard settings, set “Press 🌐 key to” to “Do Nothing”, so fn only starts SaidDone.")
         case let .modelNotInstalled(model): tr("%@ download, runs on this Mac.", model.approximateBytes.fileSize)
+        case .onDeviceAIUnavailable: tr("It was built without Xcode’s Metal shaders. Choose a cloud AI in Speech & AI.")
         case .credentialMissing: tr("The cloud engine you chose needs a key.")
         case .speechModelNotChosen, .aiModelNotChosen: tr("Pick one of the service’s models in Speech & AI.")
         }
@@ -81,6 +83,7 @@ extension Failure {
         case .badResponse: tr("The service sent an answer SaidDone can’t read.")
         case .modelMissing: tr("The model isn’t downloaded.")
         case .missingCredential: tr("No API key.")
+        case .unsupported: tr("This build of SaidDone can’t run that engine.")
         case .emptyReply: tr("The AI returned nothing.")
         case .cancelled: tr("Cancelled.")
         case .interrupted: tr("SaidDone quit before this finished.")

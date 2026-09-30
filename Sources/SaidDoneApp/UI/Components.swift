@@ -80,7 +80,7 @@ struct IssueRow: View {
         case .globeKeyAssigned: tr("Open Keyboard Settings")
         case .modelNotInstalled: tr("Download")
         case .credentialMissing: tr("Add Key")
-        case .speechModelNotChosen, .aiModelNotChosen: tr("Choose")
+        case .speechModelNotChosen, .aiModelNotChosen, .onDeviceAIUnavailable: tr("Choose")
         }
     }
 }

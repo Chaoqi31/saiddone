@@ -66,7 +66,7 @@ struct MicrophoneChoiceTests {
 
 struct ReadinessTests {
     private let allGood = SetupFacts(microphoneAllowed: true, accessibilityAllowed: true, globeKeyFree: true,
-                                     installed: [.whisper(.recommended)], credentials: ["deepseek"])
+                                     installed: [.whisper(.recommended)], credentials: ["deepseek"], onDeviceAI: true)
 
     @Test func defaultsAreReadyWithAKeyAndTheModel() {
         #expect(Readiness.issues(Preferences(), allGood).isEmpty)
@@ -74,12 +74,22 @@ struct ReadinessTests {
 
     @Test func issuesComeInFixOrder() {
         let facts = SetupFacts(microphoneAllowed: false, accessibilityAllowed: false, globeKeyFree: false,
-                               installed: [], credentials: [])
+                               installed: [], credentials: [], onDeviceAI: true)
         #expect(Readiness.issues(Preferences(), facts) == [
             .microphoneNotAllowed, .accessibilityNotAllowed, .modelNotInstalled(.whisper(.recommended)),
             .credentialMissing("deepseek"), .globeKeyAssigned,
         ])
         #expect(Readiness.recordingBlocker(Preferences(), facts) == .microphoneNotAllowed)
+    }
+
+    @Test func onDeviceAIThisBuildCantRunIsReportedInsteadOfItsDownload() {
+        var prefs = Preferences()
+        prefs.ai = .qwen(.recommended)
+        var facts = allGood
+        #expect(Readiness.issues(prefs, facts) == [.modelNotInstalled(.qwen(.recommended))])
+        facts.onDeviceAI = false
+        #expect(Readiness.issues(prefs, facts) == [.onDeviceAIUnavailable])
+        #expect(Readiness.recordingBlocker(prefs, facts) == .onDeviceAIUnavailable)
     }
 
     @Test func globeKeyWarnsButNeverBlocks() {

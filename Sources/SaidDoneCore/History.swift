@@ -70,6 +70,7 @@ public enum Failure: Codable, Equatable, Sendable {
     case badResponse
     case modelMissing
     case missingCredential
+    case unsupported
     case emptyReply
     case cancelled
     case interrupted
@@ -85,6 +86,7 @@ public enum Failure: Codable, Equatable, Sendable {
         case .badResponse: .badResponse
         case .modelMissing: .modelMissing
         case .missingCredential: .missingCredential
+        case .unsupported: .unsupported
         case .cancelled: .cancelled
         }
     }

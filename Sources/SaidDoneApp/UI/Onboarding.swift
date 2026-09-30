@@ -67,7 +67,7 @@ struct OnboardingView: View {
             return issues.allSatisfy { issue in
                 switch issue {
                 case let .modelNotInstalled(model): root.library.isDownloading(model)
-                case .credentialMissing, .speechModelNotChosen, .aiModelNotChosen: false
+                case .credentialMissing, .speechModelNotChosen, .aiModelNotChosen, .onDeviceAIUnavailable: false
                 default: true
                 }
             }

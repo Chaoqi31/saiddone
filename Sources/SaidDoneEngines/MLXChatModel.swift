@@ -36,6 +36,7 @@ actor MLXChatModel: ChatModel, LocalEngine {
     }
 
     private func container() async throws(EngineError) -> ModelContainer {
+        guard Self.canRun else { throw .unsupported }
         guard files.isInstalled(.qwen(model)) else { throw .modelMissing }
         let task = loading ?? Task { [model, files] in
             try await LLMModelFactory.shared.loadContainer(
@@ -50,6 +51,18 @@ actor MLXChatModel: ChatModel, LocalEngine {
             throw .modelMissing
         }
     }
+
+    /// MLX needs its compiled Metal shaders, which Xcode builds into mlx-swift_Cmlx.bundle and SwiftPM alone does
+    /// not; without them MLX aborts the process on its first GPU call. These are the places MLX looks.
+    static let canRun: Bool = {
+        let binary = Bundle.main.executableURL?.deletingLastPathComponent()
+        let colocated = ["mlx.metallib", "Resources/mlx.metallib"].compactMap { binary?.appending(path: $0) }
+        if colocated.contains(where: { FileManager.default.fileExists(atPath: $0.path) }) { return true }
+        return ([Bundle.main.bundleURL] + Bundle.allBundles.compactMap(\.resourceURL)).contains { root in
+            Bundle(url: root.appending(path: "mlx-swift_Cmlx.bundle"))?.url(forResource: "default",
+                                                                          withExtension: "metallib") != nil
+        }
+    }()
 
     static func download(_ model: QwenModel, into files: ModelFiles, endpoint: String,
                          progress: @escaping @Sendable (Double) -> Void) async throws {

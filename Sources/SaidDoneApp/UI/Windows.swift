@@ -224,6 +224,16 @@ final class FloatingPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    /// The hosting controller resizes the panel whenever its content changes, keeping the top edge; keep the bottom
+    /// edge and the horizontal center instead, so the bar grows upward from where it was placed.
+    override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+        var rect = frameRect
+        if rect.size != frame.size, frame.size != .zero {
+            rect.origin = NSPoint(x: frame.midX - rect.width / 2, y: frame.minY)
+        }
+        super.setFrame(rect, display: flag)
+    }
+
     /// On the screen with the pointer, where the user is looking.
     func present(at placement: Placement) {
         let mouse = NSEvent.mouseLocation
