@@ -82,7 +82,7 @@ struct OpenAICompatibleTests {
         #expect(sent.request.url?.path == "/v1/audio/transcriptions")
         let form = String(decoding: sent.body, as: UTF8.self)
         for part in ["name=\"model\"\r\n\r\ngpt-transcribe", "name=\"language\"\r\n\r\nzh",
-                     "name=\"prompt\"\r\n\r\nVercel, SaidDone", "filename=\"audio.m4a\""] {
+                     "name=\"prompt\"\r\n\r\n我们刚才聊到了 Vercel 和 SaidDone。", "filename=\"audio.m4a\""] {
             #expect(form.contains(part), "form carries \(part)")
         }
     }

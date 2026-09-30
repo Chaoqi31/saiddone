@@ -50,7 +50,7 @@ struct OpenAICompatible: Sendable {
         field("model", model)
         field("response_format", "json")
         if let language = hints.language { field("language", language.rawValue) }
-        if !hints.vocabulary.isEmpty { field("prompt", hints.vocabulary.joined(separator: ", ")) }
+        if let prompt = hints.prompt { field("prompt", prompt) }
         body.append(Data(("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"\(audio.filename)\"\r\n"
             + "Content-Type: \(audio.mimeType)\r\n\r\n").utf8))
         body.append(audio.data)

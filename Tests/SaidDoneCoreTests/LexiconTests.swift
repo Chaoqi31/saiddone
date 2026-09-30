@@ -74,6 +74,19 @@ struct LexiconTests {
         #expect(lexicon.recognitionHints(limit: 1) == ["New"])
     }
 
+    @Test func recognitionPromptIsASentenceInTheSpokenLanguage() {
+        func prompt(_ language: Language?, _ terms: [String]) -> String? {
+            RecognitionHints(language: language, vocabulary: terms).prompt
+        }
+        #expect(prompt(.chinese, ["API", "bug", "Vercel"]) == "我们刚才聊到了 API、bug 和 Vercel。")
+        #expect(prompt(.chinese, ["API"]) == "我们刚才聊到了 API。")
+        #expect(prompt(.chinese, []) == "以下是普通话的句子。")
+        #expect(prompt(.english, ["API", "bug"]) == "We just talked about API and bug.")
+        #expect(prompt(.english, [""]) == nil)
+        #expect(prompt("ja", ["API", "bug"]) == "API, bug.")
+        #expect(prompt(nil, []) == nil)
+    }
+
     @Test func csvRoundTripsAndMerges() {
         var lexicon = Lexicon()
         #expect(lexicon.importCSV("Vercel,Verso|vessel\n\nSaidDone\n张三,章三\n", at: t0) == 3)

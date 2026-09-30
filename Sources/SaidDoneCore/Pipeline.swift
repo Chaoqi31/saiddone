@@ -5,12 +5,31 @@ import Foundation
 public struct RecognitionHints: Equatable, Sendable {
     /// nil = let the engine detect the language.
     public var language: Language?
-    /// Dictionary terms the engine should expect (Whisper prompt tokens, OpenAI `prompt`).
+    /// Dictionary terms the engine should expect.
     public var vocabulary: [String]
 
     public init(language: Language? = nil, vocabulary: [String] = []) {
         self.language = language
         self.vocabulary = vocabulary
+    }
+
+    /// What Whisper-style engines read as the conversation so far. They continue its language, script and spelling,
+    /// so a plain sentence in the spoken language that uses the terms steers all three: Simplified rather than
+    /// Traditional characters, "bug" rather than "Book". A bare word list or a colon-led glossary leaks its
+    /// punctuation into the transcript instead.
+    public var prompt: String? {
+        let terms = vocabulary.filter { !$0.isEmpty }
+        func list(_ separator: String, _ last: String) -> String {
+            terms.count < 2 ? terms.joined() : terms.dropLast().joined(separator: separator) + last + terms.last!
+        }
+        switch language?.rawValue {
+        case "zh":
+            return terms.isEmpty ? "以下是普通话的句子。" : "我们刚才聊到了 \(list("、", " 和 "))。"
+        case "en":
+            return terms.isEmpty ? nil : "We just talked about \(list(", ", " and "))."
+        default:
+            return terms.isEmpty ? nil : terms.joined(separator: ", ") + "."
+        }
     }
 }
 

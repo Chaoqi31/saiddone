@@ -20,13 +20,18 @@ actor WhisperKitTranscriber: Transcriber, LocalEngine {
 
     func transcribe(_ audio: AudioSamples, hints: RecognitionHints) async throws(EngineError) -> String {
         let kit = try await kit()
-        var options = DecodingOptions(language: hints.language?.rawValue, detectLanguage: hints.language == nil,
-                                      skipSpecialTokens: true, suppressBlank: true)
-        if !hints.vocabulary.isEmpty, let tokenizer = kit.tokenizer {
-            options.promptTokens = tokenizer.encode(text: " " + hints.vocabulary.joined(separator: ", "))
-                .filter { $0 < tokenizer.specialTokens.specialTokenBegin }
-        }
+        var hints = hints
         do {
+            // Terms only steer Whisper inside a sentence in the spoken language, so auto-detect with a dictionary
+            // detects first. That costs one more encoder pass (about 0.4 s), which plain auto-detect skips.
+            if hints.language == nil, !hints.vocabulary.isEmpty {
+                hints.language = Language(rawValue: try await kit.detectLangauge(audioArray: audio.samples).language)
+            }
+            var options = DecodingOptions(language: hints.language?.rawValue, detectLanguage: hints.language == nil,
+                                          skipSpecialTokens: true, suppressBlank: true)
+            if let tokenizer = kit.tokenizer, let prompt = hints.prompt {
+                options.promptTokens = tokenizer.encode(text: prompt).filter { $0 < tokenizer.specialTokens.specialTokenBegin }
+            }
             let results = try await kit.transcribe(audioArray: audio.samples, decodeOptions: options)
             return results.map(\.text).joined(separator: " ")
         } catch {

@@ -4,7 +4,6 @@ import os
 import SaidDoneCore
 import SaidDoneEngines
 
-@main
 struct SaidDoneCLI: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "saiddone-cli",
@@ -15,6 +14,15 @@ struct SaidDoneCLI: AsyncParsableCommand {
         Keys come from SAIDDONE_KEY_<VENDOR> (for example SAIDDONE_KEY_DEEPSEEK), or SAIDDONE_KEY.
         """,
         subcommands: [Run.self, Download.self, ListModels.self])
+}
+
+@main
+enum Entry {
+    static func main() async {
+        // Progress lines interleave with errors on stderr in the order they happen.
+        setvbuf(stdout, nil, _IOLBF, 0)
+        await SaidDoneCLI.main()
+    }
 }
 
 struct Run: AsyncParsableCommand {
@@ -50,9 +58,10 @@ struct Run: AsyncParsableCommand {
         try await engines.prepare(setup)
         print("loaded in \(loadStart.duration(to: clock.now))")
         let pipeline = await engines.pipeline(for: setup)
+        let runStart = clock.now
         let result = try await pipeline.run(samples, try parseRequest(), context,
                                             budget: Budget.ai(local: aiEngine.isLocal, audio: samples.length)) {
-            print("stage: \($0.rawValue)")
+            print("stage: \($0.rawValue) at \(runStart.duration(to: clock.now))")
         }
         print("audio: \(samples.length)")
         print("transcript: \(result.transcript)")
