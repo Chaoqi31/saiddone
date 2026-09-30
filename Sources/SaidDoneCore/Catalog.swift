@@ -18,9 +18,9 @@ public enum WhisperModel: String, Codable, CaseIterable, Sendable {
 
     public var approximateBytes: Int64 {
         switch self {
-        case .largeV3Turbo: 1_600_000_000
-        case .largeV3TurboCompact: 632_000_000
-        case .largeV3: 3_100_000_000
+        case .largeV3Turbo: 1_638_000_000
+        case .largeV3TurboCompact: 646_000_000
+        case .largeV3: 3_090_000_000
         }
     }
 }
@@ -43,19 +43,18 @@ public enum QwenModel: String, Codable, CaseIterable, Sendable {
 
     public var approximateBytes: Int64 {
         switch self {
-        case .qwen3_4B: 2_300_000_000
-        case .qwen3_1_7B: 1_000_000_000
-        case .qwen3_8B: 4_600_000_000
+        case .qwen3_4B: 2_279_000_000
+        case .qwen3_1_7B: 984_000_000
+        case .qwen3_8B: 4_624_000_000
         }
     }
-
-    /// Hybrid Qwen3 builds think unless the chat template is told not to; the 2507 Instruct build never thinks.
-    public var isHybridThinking: Bool { self != .qwen3_4B }
 }
 
 public enum LocalModel: Hashable, Sendable {
     case whisper(WhisperModel)
     case qwen(QwenModel)
+
+    public static let all: [LocalModel] = WhisperModel.allCases.map(LocalModel.whisper) + QwenModel.allCases.map(LocalModel.qwen)
 
     public var name: String {
         switch self {
@@ -96,15 +95,15 @@ public struct CloudEndpoint: Codable, Hashable, Sendable {
     }
 }
 
-/// How a vendor lets a request turn reasoning off. Dictation cleanup needs no chain of thought, and thinking
-/// multiplies latency. Support varies by model even within a vendor, so the transport drops the switch for a model
-/// that rejects it.
-public enum ThinkingSwitch: Sendable {
-    case unsupported
-    /// `"thinking": {"type": "disabled"}` (DeepSeek, Zhipu GLM).
-    case thinkingType
-    /// `"reasoning_effort": "none"` (OpenAI).
-    case reasoningEffort
+/// The request parameters a vendor's chat endpoint expects. Every dialect asks for deterministic output with bounded
+/// length and no reasoning: dictation cleanup needs no chain of thought, and thinking multiplies latency.
+public enum ChatDialect: Sendable {
+    /// `max_tokens`, `temperature: 0`.
+    case standard
+    /// Standard plus `"thinking": {"type": "disabled"}` (DeepSeek, Zhipu GLM).
+    case thinkingOff
+    /// `max_completion_tokens`, `temperature: 0`, `"reasoning_effort": "none"` (OpenAI GPT-5).
+    case openAI
 }
 
 public struct CloudPreset: Identifiable, Hashable, Sendable {
@@ -114,7 +113,7 @@ public struct CloudPreset: Identifiable, Hashable, Sendable {
     /// Known-good suggestions, the first being the default. Empty = pick from the endpoint's own model list.
     public let models: [String]
     public let requiresKey: Bool
-    public let thinking: ThinkingSwitch
+    public let dialect: ChatDialect
     /// Where the user gets a key.
     public let keyURL: URL?
 
@@ -125,14 +124,14 @@ public struct CloudPreset: Identifiable, Hashable, Sendable {
 
     public static let deepseek = CloudPreset(
         "deepseek", "DeepSeek", "https://api.deepseek.com", ["deepseek-flash", "deepseek-v4-pro"],
-        thinking: .thinkingType, keyURL: "https://platform.deepseek.com/api_keys")
+        dialect: .thinkingOff, keyURL: "https://platform.deepseek.com/api_keys")
 
     public static let chat: [CloudPreset] = [
         deepseek,
         CloudPreset("openai", "OpenAI", "https://api.openai.com/v1", ["gpt-5.6-luna", "gpt-5.6-terra"],
-                    thinking: .reasoningEffort, keyURL: "https://platform.openai.com/api-keys"),
+                    dialect: .openAI, keyURL: "https://platform.openai.com/api-keys"),
         CloudPreset("zhipu", "Zhipu GLM", "https://open.bigmodel.cn/api/paas/v4", ["glm-5.2"],
-                    thinking: .thinkingType, keyURL: "https://open.bigmodel.cn/usercenter/apikeys"),
+                    dialect: .thinkingOff, keyURL: "https://open.bigmodel.cn/usercenter/apikeys"),
         CloudPreset("moonshot", "Moonshot Kimi", "https://api.moonshot.cn/v1", [],
                     keyURL: "https://platform.moonshot.cn/console/api-keys"),
         CloudPreset("siliconflow", "SiliconFlow", "https://api.siliconflow.cn/v1", [],
@@ -165,18 +164,13 @@ public struct CloudPreset: Identifiable, Hashable, Sendable {
     }
 
     private init(_ id: String, _ name: String, _ baseURL: String, _ models: [String], requiresKey: Bool = true,
-                 thinking: ThinkingSwitch = .unsupported, keyURL: String? = nil) {
+                 dialect: ChatDialect = .standard, keyURL: String? = nil) {
         self.id = VendorID(rawValue: id)
         self.name = name
         self.baseURL = URL(string: baseURL)!
         self.models = models
         self.requiresKey = requiresKey
-        self.thinking = thinking
+        self.dialect = dialect
         self.keyURL = keyURL.flatMap(URL.init(string:))
     }
-}
-
-/// Volcengine (Doubao) file recognition. Its own protocol, not OpenAI-compatible.
-public enum VolcengineResource: String, Codable, CaseIterable, Sendable {
-    case turbo = "volc.bigasr.auc_turbo"
 }

@@ -6,7 +6,7 @@ struct PreferencesTests {
     @Test func roundTrips() throws {
         var prefs = Preferences()
         prefs.spokenLanguage = .detect
-        prefs.speech = .volcengine(appID: "123", resource: .turbo)
+        prefs.speech = .volcengine(appID: "123")
         prefs.ai = .qwen(.qwen3_8B)
         prefs.proxy = Proxy(host: "127.0.0.1", port: 7890)
         prefs.personalization.toneByApp["com.tinyspeck.slackmacgap"] = "casual"
@@ -98,9 +98,8 @@ struct ReadinessTests {
         prefs.ai = .cloud(CloudPreset.chat("openai")!.defaultEndpoint)
         #expect(Readiness.issues(prefs, allGood) == [.credentialMissing("openai")])
         prefs.ai = .cloud(CloudPreset.chat("ollama")!.defaultEndpoint)
-        prefs.speech = .volcengine(appID: " ", resource: .turbo)
-        #expect(Readiness.issues(prefs, allGood)
-                == [.volcengineAppIDMissing, .aiModelNotChosen, .credentialMissing(.volcengine)])
+        prefs.speech = .volcengine(appID: "")
+        #expect(Readiness.issues(prefs, allGood) == [.aiModelNotChosen, .credentialMissing(.volcengine)])
     }
 }
 

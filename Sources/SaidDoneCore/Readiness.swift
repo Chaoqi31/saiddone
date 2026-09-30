@@ -9,7 +9,6 @@ public enum Issue: Hashable, Sendable {
     case globeKeyAssigned
     case modelNotInstalled(LocalModel)
     case credentialMissing(VendorID)
-    case volcengineAppIDMissing
     /// A cloud endpoint has no model name yet.
     case speechModelNotChosen
     case aiModelNotChosen
@@ -44,9 +43,6 @@ public enum Readiness {
         var issues: [Issue] = []
         if !facts.microphoneAllowed { issues.append(.microphoneNotAllowed) }
         if !facts.accessibilityAllowed { issues.append(.accessibilityNotAllowed) }
-        if case let .volcengine(appID, _) = prefs.speech, appID.trimmingCharacters(in: .whitespaces).isEmpty {
-            issues.append(.volcengineAppIDMissing)
-        }
         if case let .cloud(endpoint) = prefs.speech, endpoint.model.isEmpty { issues.append(.speechModelNotChosen) }
         if case let .cloud(endpoint) = prefs.ai, endpoint.model.isEmpty { issues.append(.aiModelNotChosen) }
         for model in [prefs.speech.localModel, prefs.ai.localModel].compactMap({ $0 })

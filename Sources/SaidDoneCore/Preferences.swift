@@ -69,7 +69,9 @@ public enum SpokenLanguage: Codable, Hashable, Sendable {
 public enum SpeechEngine: Codable, Hashable, Sendable {
     case whisper(WhisperModel)
     case cloud(CloudEndpoint)
-    case volcengine(appID: String, resource: VolcengineResource)
+    /// Volcengine (Doubao) file recognition, its own protocol. Consoles created before 2025 issue an App ID plus an
+    /// access token; newer ones issue a single API key, so `appID` is empty.
+    case volcengine(appID: String)
 
     /// Whose credential it needs. nil = on device.
     public var vendor: VendorID? {
