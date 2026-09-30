@@ -18,6 +18,9 @@ jobs:
         run: |
           sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           xcodebuild -runFirstLaunch
+          # Xcode 26 ships the Metal compiler separately. On-device AI needs it to build MLX's shaders.
+          xcodebuild -downloadComponent MetalToolchain || true
+          xcrun --find metal
 
       - name: Run tests
         run: scripts/test.sh

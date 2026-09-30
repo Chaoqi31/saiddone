@@ -1,55 +1,32 @@
-# SaidDone v1.2.0
+# SaidDone v2.0.0
 
-Safer fast dictation, faster warm runs, and more reliable History persistence.
+SaidDone 2 is a rewrite. It adds the `fn` key, hands-free and hold-to-talk recording, a durable history with retry, and a dictionary that learns from your corrections.
 
-## What's new in v1.2
+## New
 
-- **Safer Fast Dictation** — polished text only replaces the draft when SaidDone can verify the original app, input field, and exact draft suffix. It never sends a blind Undo; when a safe swap is impossible, the final text is copied for manual paste.
-- **Faster Translation** — polishing and translation now share one LLM operation instead of two sequential requests.
-- **Consistent three-mode pipeline** — Voice Input, Translation, and Ask Anything now share ASR cleanup, dictionary handling, progress, timeout, timing, and output normalization.
-- **More reliable History** — audio and JSONL persistence run outside the insertion hot path, mutations are serialized, writes are atomic, and entry/audio cleanup stays consistent across edit, delete, and clear.
-- **Warm provider reuse** — changing unrelated settings no longer rebuilds already-warm ASR or LLM providers.
-- **Reliable local model discovery** — WhisperKit and MLX model locations/readiness use one shared implementation, while existing Whisper downloads in the legacy location continue to work.
-- **Stronger polish behavior** — expanded handling for fillers, spoken cancellation, self-correction, prompt-like dictation, mixed Chinese/English technical terms, and empty-output safety.
-- **Expanded regression coverage** — 107 tests cover the unified pipeline, History races and failures, provider reuse, model storage, polish output, and safe fast-draft replacement. The cloud corpus remains an explicit opt-in live smoke test.
+- **The `fn` key.** `fn` starts Voice Input, `fn` `⇧` Translation, and `fn` `⌃` Ask Anything. `⌃⌥D`, `⌃⌥T` and `⌃⌥A` still work.
+- **Tap or hold.** Tap a shortcut to talk hands-free, or hold it and let go to finish. While holding `fn`, add `⇧` or `⌃` to switch modes.
+- **Any shortcut.** Each mode takes several shortcuts: `fn` combinations, right-side modifier keys, key combinations, function keys, and mouse buttons.
+- **No waiting.** A new recording can start while the previous one is processing. Results arrive in order.
+- **Durable history.** Each recording is saved with its audio before any engine runs. A crash, quit or network failure keeps it, and **Run Again** processes it later.
+- **A dictionary that learns.** When you fix a word right after SaidDone types it, the fix is added. Words you add can list the ways they get misheard. CSV import and export.
+- **Better on-device recognition of your words.** Dictionary terms reach Whisper as a sentence in the language you speak, which fixes terms like "bug" without breaking punctuation or switching Chinese to Traditional characters.
+- **Voice bar.** Shows the live level, the elapsed time, the processing stage, and what happened, with **Retry** and **Copy text** when a job fails.
+- **Ask Anything answers** open in a floating panel with **Copy** and **Insert**. Spoken searches, such as "search swift actors on YouTube", open the results page.
+- **Stats.** Words dictated, typing time saved, and words per minute.
+- **Engines.** OpenAI GPT-5.6 and `gpt-transcribe`, DeepSeek `deepseek-flash`, Zhipu GLM-5.2, Volcengine (Doubao) speech with a single API key, and a **Test** button for each engine.
+- **Interface language** switches between English and Simplified Chinese without a restart.
+- **Mute other audio** while recording, and a Bluetooth headset no longer drops to call quality: **Automatic** uses the Mac's own microphone instead.
 
-## Upgrade notes
+## Changed
 
-No configuration migration is required. Existing local Whisper models are detected automatically.
+- Models now live in `~/Library/Application Support/SaidDone/Models`, next to history and settings.
+- API keys are stored in one Keychain item, so macOS asks at most once after an update.
+- **Show in Dock** is on by default.
+- History keeps failed entries for at least a day, whatever the retention setting.
 
-# SaidDone v1.1.0
+## Removed
 
-Typeless-style three modes, smarter zh-en polish, and more reliable recording.
-
-## What's new in v1.1
-
-- **Three modes like Typeless** — Voice Input `⌃⌥D`, Translation `⌃⌥T`, Ask Anything `⌃⌥A` (edit selected text or ask a question)
-- **Smarter zh-en polish** — LLM uses context to fix obvious ASR mis-hearings in mixed Chinese/English speech
-- **More reliable mic capture** — auto-restart input when audio route changes (Bluetooth connect/disconnect); clearer errors when no audio is captured
-- **Polish safety** — never drop your words: empty polish falls back to the ASR draft; fast-insert draft is kept if polish fails
-- **Settings migration** — old `rewriteHotkey` in config.json maps to Ask Anything automatically
-
-## Install
-
-1. Download **`SaidDone.dmg`** from [Releases](../../releases/latest)
-2. Open the DMG → drag **SaidDone** to **Applications**
-3. First launch: allow past Gatekeeper once (see [INSTALL.md](INSTALL.md))
-4. Complete the **Setup Assistant** (mic + Accessibility + engines)
-
-## Requirements
-
-- Apple Silicon Mac (M1+)
-- macOS 14 (Sonoma) or later
-- ~3.8 GB disk for all-local models (optional if using cloud LLM)
-
-## Shortcuts (default)
-
-| Shortcut | Mode |
-|---|---|
-| `⌃⌥D` | Voice Input — speak, insert at cursor |
-| `⌃⌥T` | Translation — speak one language, insert target language |
-| `⌃⌥A` | Ask Anything — edit/query selection or ask a question |
-
-All rebindable in Settings — including mouse side buttons.
-
-MIT licensed.
+- Fast draft insertion, voice commands, settings export and import, editing and reinserting history entries, and the AI timeout setting. SaidDone sets the AI time limit from the recording's length.
+- Reading keys from a `.env` file.
+- Migration from 1.x. See the [upgrade notes](INSTALL.md#upgrade-from-saiddone-1x).

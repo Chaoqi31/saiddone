@@ -1,92 +1,68 @@
-# Installing SaidDone
+# How to install and set up SaidDone
 
-SaidDone is a menu-bar voice-to-text app for **Apple Silicon Macs running macOS 14 (Sonoma) or later**.
+SaidDone needs an Apple silicon Mac (M1 or later) with macOS 14 or later.
 
----
+## Install the app
 
-## 1. Download
+1. Download [SaidDone.dmg](https://github.com/Chaoqi31/saiddone/releases/latest/download/SaidDone.dmg) from the latest release.
+2. Open the DMG and drag **SaidDone** onto the **Applications** folder in the same window.
 
-Download **[SaidDone.dmg](https://github.com/Chaoqi31/saiddone/releases/latest/download/SaidDone.dmg)** from the latest [Release](../../releases).
+## Open it the first time
 
-<!-- screenshot: GitHub Releases page with SaidDone.dmg asset highlighted -->
+SaidDone is ad-hoc signed, not notarized, so macOS blocks the first open with "Apple cannot verify…". Allow it once:
 
-## 2. Install
+- On macOS 14, right-click **SaidDone** in Applications, choose **Open**, then click **Open**.
+- On macOS 15 or later, double-click **SaidDone**. Then open **System Settings → Privacy & Security**, scroll down, and click **Open Anyway**.
+- On any version, you can run this in Terminal instead, then open the app normally:
 
-Open the DMG and **drag SaidDone onto the Applications folder** shown in the window.
-
-<!-- screenshot: mounted DMG window — SaidDone icon + arrow + Applications shortcut + "READ ME FIRST" -->
-
-## 3. First launch (allow it past Gatekeeper)
-
-SaidDone is open-source and **ad-hoc signed, not notarized** (notarization needs a paid Apple Developer account). So the first open is blocked with *"Apple cannot verify…"*. This is expected — allow it **once**:
-
-- **macOS 14 (Sonoma):** in Applications, **right-click SaidDone → Open**, then **Open** in the dialog.
-- **macOS 15 (Sequoia) and later:** double-click SaidDone (it gets blocked), then go to **System Settings → Privacy & Security**, scroll down, and click **"Open Anyway"**. Confirm once more.
-- **Terminal alternative (any version):**
   ```sh
   xattr -dr com.apple.quarantine /Applications/SaidDone.app
   ```
-  then open the app normally.
 
-<!-- screenshot: macOS 15 System Settings → Privacy & Security → "Open Anyway" button -->
+After that, SaidDone opens like any other app.
 
-After this one-time approval, SaidDone opens normally every time.
+## Follow the Setup Assistant
 
-## 4. Setup Assistant
+The Setup Assistant opens on first launch. To run it again later, open **Settings → General** and click **Setup Assistant…**.
 
-On first launch a **Setup Assistant** opens and walks you through everything:
+1. **Welcome.** Choose the interface language and the language you speak. If you mix English words into Chinese, keep Chinese: SaidDone handles the mix.
+2. **Allow access.**
+   - Click **Allow** next to **Microphone**.
+   - Click **Allow** next to **Accessibility**. macOS opens System Settings. Turn on **SaidDone** in the list, then come back. The shortcuts and pasting both need this.
+   - To use `fn` alone, click **Open Keyboard Settings** and set **Press 🌐 key to** to **Do Nothing**. Otherwise pressing `fn` also switches input sources or shows emoji.
+3. **Choose your engines.** The defaults are on-device Whisper for speech and DeepSeek for the AI.
+   - Click **Download** next to the speech model. You can continue while it downloads.
+   - Paste your DeepSeek API key, or click **Get a Key** to create one. To avoid keys entirely, set the AI engine to **On this Mac** and download Qwen3 4B.
+   - Click **Test** to check an engine end to end.
+4. **Your shortcuts.** Keep the defaults, or click **Add Shortcut…** and press the keys or mouse button you want.
+5. **Try it.** Click in the text box, press `fn`, say a sentence, and press `fn` again. The text appears in the box. Then click **Done**.
 
-1. **Welcome** — what SaidDone does and the system requirements.
-2. **Permissions** — grant:
-   - **Microphone** *(required)* — to hear your speech.
-   - **Accessibility** *(recommended)* — to paste the result into the app you're typing in. Without it, results are still saved to History but won't auto-insert.
-3. **Choose your engines** — independently pick where each stage runs:
-   - **Speech → text (ASR):** Local (WhisperKit, on-device) or Cloud.
-   - **AI polish (LLM):** Local (MLX Qwen3, on-device) or Cloud.
-   - No cloud key? Switch both stages to **Local** — the zero-key path is fully supported.
-4. **Set up** — download the local models (with progress), and/or enter and **test** your cloud API key.
-5. **Try it** — record a sentence and confirm the whole pipeline works (this won't type anywhere).
-6. **Done** — review the shortcuts and optionally enable launch-at-login.
+The first time a model loads, macOS prepares it for your Mac, which takes a few minutes. SaidDone starts this as soon as the download finishes, and later launches load in seconds.
 
-<!-- screenshot: Setup Assistant "Choose your engines" step -->
+## Dictate anywhere
 
-You can re-run it any time from the menu-bar icon → **Setup Assistant…**
-
-## 5. Models & download size
-
-The fully local path is private, offline, and needs no API key:
-
-| Stage | Default model | Size |
-|---|---|---|
-| Speech → text | WhisperKit `large-v3-turbo` | ~1.5 GB |
-| AI polish | MLX `Qwen3-4B-4bit` | ~2.3 GB |
-
-→ **~3.8 GB total, downloaded once.** They live in `~/Documents/huggingface/models/`.
-
-**On a mainland-China network**, downloads from `huggingface.co` often stall. In the Setup Assistant's download step, turn on **"Use the China mirror (hf-mirror.com)"** and retry.
-
-Prefer a smaller/faster local model? Pick **Qwen3 1.7B** or **0.6B** in the engines step (or later in **Settings → Providers**). Prefer top quality with a key? Keep **Cloud** for ASR/polish (e.g. SiliconFlow + DeepSeek) — best for Chinese day-to-day.
-
-## 6. Use it
-
-Click into any text field, then:
+Click into any text field in any app, then:
 
 | Shortcut | Mode |
 |---|---|
-| `⌃⌥D` | **Voice Input** — speak, get clean text at your cursor |
-| `⌃⌥T` | **Translation** — speak one language, insert another |
-| `⌃⌥A` | **Ask Anything** — edit/query selected text, or ask a question |
+| `fn` or `⌃⌥D` | **Voice Input**: speak, and polished text appears at your cursor. |
+| `fn` `⇧` or `⌃⌥T` | **Translation**: speak any language, and the translation appears. |
+| `fn` `⌃` or `⌃⌥A` | **Ask Anything**: select text first and say what to change, or ask a question. |
 
-Press once to start, press again to finish & insert. Everything is saved to **History** (searchable, editable, re-insertable).
+Tap a shortcut to talk hands-free and tap it again to finish, or hold it while you talk and let go. Press `Esc` to cancel.
 
----
+## Download models from mainland China
 
-## Troubleshooting
+If a download stalls, open **Settings → Speech & AI**, turn on **Download models through hf-mirror.com**, and click **Download** again. To send cloud requests through your VPN app, turn on **Use a proxy for cloud services** and enter its host and port, such as `127.0.0.1` and `7890`.
 
-- **"SaidDone is damaged and can't be opened."** This is a quarantine flag, not real damage. Run `xattr -dr com.apple.quarantine /Applications/SaidDone.app` and reopen.
-- **Model download stuck at 0% / very slow.** Enable the **hf-mirror.com** mirror in the Setup Assistant, or check your network/proxy.
-- **Dictation transcribes but nothing is inserted.** Accessibility permission is off — grant it in **System Settings → Privacy & Security → Accessibility** (your text is still in History).
-- **First polish is slow.** The model loads into memory on first use (one-time, per launch). The Setup Assistant warms it for you.
-- **No audio captured / "未录到声音".** Check **System Settings → Sound → Input** (levels move when you speak). If using Bluetooth headphones, try built-in mic or toggle **Record from built-in mic** in Settings → General.
+## Fix common problems
 
-Requires **Apple Silicon** (M1 or later) and **macOS 14+**. Building from source additionally needs Xcode 26 / Swift 6.2 and the Metal toolchain — see the [README](README.md).
+- **"SaidDone is damaged and can't be opened."** This is the download quarantine flag, not damage. Run `xattr -dr com.apple.quarantine /Applications/SaidDone.app` and open it again.
+- **Pressing the shortcut does nothing.** Accessibility is off. Open **System Settings → Privacy & Security → Accessibility** and turn on SaidDone. If it is already on after an update, turn it off and on again.
+- **The text was copied instead of typed.** You switched apps before it finished, or the cursor was not in a text field. Press `⌘V` to paste it. The text is also in **History**.
+- **Nothing was heard.** Open **Settings → Microphone** and watch the input level while you speak. With AirPods or another Bluetooth headset, **Automatic** records from the Mac's own microphone on purpose; pick the headset there if you want it.
+- **A job failed.** The voice bar shows why, with **Retry**. Every failed recording stays in **History** for at least a day, where **Run Again** processes it with your current engines.
+
+## Upgrade from SaidDone 1.x
+
+SaidDone 2 starts fresh and does not read 1.x settings, history or models. Run the Setup Assistant, enter your API keys again, and download the models again. The 1.x models in `~/Documents/huggingface` can be deleted.

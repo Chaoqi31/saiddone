@@ -4,153 +4,129 @@
 
 # SaidDone
 
-**AI voice-to-text for macOS — cloud-quality by default, fully local when you want it.**
+**Talk instead of typing, in any Mac app.**
 
-Press a hotkey, speak, and polished text lands at your cursor — in any app.
+Press fn, speak, and clean, punctuated text appears at your cursor.
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/Chaoqi31/saiddone/actions/workflows/ci.yml/badge.svg)](https://github.com/Chaoqi31/saiddone/actions/workflows/ci.yml)
 ![Platform](https://img.shields.io/badge/macOS-14%2B-black?logo=apple)
-![Swift](https://img.shields.io/badge/Swift-6.2-f05138?logo=swift&logoColor=white)
-![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-required-555)
-![Tests](https://img.shields.io/badge/tests-100%2B%20passing-brightgreen)
+![Apple silicon](https://img.shields.io/badge/Apple%20silicon-required-555)
 
 <br />
 
 [![Download SaidDone for macOS](https://img.shields.io/badge/Download-SaidDone.dmg-007AFF?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/Chaoqi31/saiddone/releases/latest/download/SaidDone.dmg)
 
-<br />
-
-[Latest release notes](https://github.com/Chaoqi31/saiddone/releases/latest) · [Install guide](INSTALL.md)
+[Install guide](INSTALL.md) · [Release notes](RELEASE_NOTES.md)
 
 </div>
 
 ---
 
-> [!NOTE]
-> An open-source alternative to paid cloud dictation tools (Typeless, Wispr Flow). Setup Assistant defaults to a cloud provider (DeepSeek or any OpenAI-compatible endpoint) for the most reliable transcription and polish. Switch any stage to fully on-device in Settings — your audio and text never leave your Mac, no API key required, works offline. Typeless has no equivalent to that path at all.
+SaidDone is a free, open-source alternative to Typeless and Wispr Flow. Speech recognition and the AI that tidies your words are chosen separately: run either one on your Mac, where nothing leaves it, or on a cloud service with your own key.
 
-## Features
+## What it does
 
-| | |
-|---|---|
-| **Voice Input** `⌃⌥D` | Speak in any app; get clean text at your cursor. |
-| **Translation** `⌃⌥T` | Speak one language; insert another. |
-| **Ask Anything** `⌃⌥A` | Select text and speak an instruction, or ask a question — like Typeless. |
-| **Local/private path** | On-device WhisperKit ASR + MLX Qwen run offline after model download. Cloud is explicit and per-stage. |
-| **Faithful polishing** | Punctuation, Simplified Chinese, filler removal, **context-aware zh-en ASR fixes**, subtitle-hallucination filtering, silence trimming — cleans up what you said without rewriting or inventing. |
-| **Custom dictionary** | Fix a word once in History; it's corrected automatically next time. |
-| **Personalization** | User profile + per-app tone profiles (like ChatGPT custom instructions). |
-| **History** | Search, edit, re-insert, export — with original audio saved on device. |
-| **Polished UX** | Setup Assistant, bilingual UI (中文 / English), menu-bar + Dock, rebindable hotkeys (keyboard **or mouse side buttons**), recording overlay with 0→1 progress, launch-at-login, VoiceOver support. |
-| **Fast dictation** | Optional: insert the ASR draft immediately, then swap in the polished text when ready. |
-
-**v1.2 highlights:** safer fast-draft replacement · faster one-pass translation · resilient History persistence · warm provider reuse.
-
-## Shortcuts
-
-| Shortcut | Mode | Behavior |
+| Mode | Default shortcut | What you get |
 |---|---|---|
-| `⌃⌥D` | Voice Input | Press to start, press again to finish and insert. |
-| `⌃⌥T` | Translation | Speak in any language → inserts the configured target language. |
-| `⌃⌥A` | Ask Anything | Edit/query selected text, or ask a question with no selection. |
+| **Voice Input** | `fn` or `⌃⌥D` | What you said, with filler words, false starts and self-corrections removed, and punctuation fixed. |
+| **Translation** | `fn` `⇧` or `⌃⌥T` | What you said, translated into your target language. |
+| **Ask Anything** | `fn` `⌃` or `⌃⌥A` | Select text and say what to do with it ("make this more formal"), or ask a question and read the answer in a floating panel. "Search swift actors on YouTube" opens the results page. |
 
-All shortcuts are rebindable in **Settings → General**.
+Every shortcut works two ways:
+
+- **Tap** it, talk hands-free, and tap it again to finish.
+- **Hold** it while you talk, and let go to finish.
+
+While holding `fn`, add `⇧` or `⌃` to switch to Translation or Ask Anything. `Esc` cancels. You can start the next recording while the last one is still processing; results arrive in order.
+
+Also included:
+
+- **History.** Every recording is saved with its audio before any engine runs, so a crash, a quit or a network failure never loses what you said. Failed entries keep their recording and can run again. Search, copy, and filter by mode.
+- **Dictionary.** Add names and jargon SaidDone gets wrong, with the ways it mishears them. When you fix a word right after SaidDone types it, SaidDone learns the fix. CSV import and export.
+- **Personalization.** Describe yourself ("iOS developer, I mix English tech terms into Chinese"), set a default tone, and give specific apps their own tone.
+- **Stats.** Words dictated, typing time saved, and speaking pace.
+- **Shortcuts your way.** Any mode can have several shortcuts: `fn` combinations, right-side modifier keys, key combinations, function keys, or mouse buttons.
+- **English and Simplified Chinese interface.** It switches instantly, without a restart.
+
+## Engines
+
+Pick an engine for each half in **Settings → Speech & AI**. What you pick is what runs; SaidDone never switches engines behind your back.
+
+| | On your Mac | Cloud, with your key |
+|---|---|---|
+| **Speech recognition** | Whisper large-v3 turbo (1.64 GB, recommended), turbo compact (646 MB), large-v3 (3.09 GB) | OpenAI, Groq, SiliconFlow, Volcengine (Doubao), or any OpenAI-compatible endpoint |
+| **AI** | Qwen3 4B (2.28 GB, recommended), 1.7B, 8B | DeepSeek (default), OpenAI, Zhipu GLM, Moonshot Kimi, SiliconFlow, OpenRouter, Groq, Ollama, LM Studio, or any OpenAI-compatible endpoint |
+
+The default setup is on-device Whisper for speech and DeepSeek for the AI, which needs a DeepSeek API key. For a setup with no key at all, choose **On this Mac** for both halves.
+
+On-device models download once from Hugging Face. Where Hugging Face is slow or blocked, turn on **Download models through hf-mirror.com**. Cloud requests can go through an HTTP proxy.
+
+## Privacy
+
+- With both halves on your Mac, your audio and text never leave it, and SaidDone works offline.
+- A cloud speech engine receives your audio. A cloud AI receives the transcript, your dictionary terms, your personalization text, and, in Ask Anything, the text you selected.
+- History, the dictionary and settings stay in `~/Library/Application Support/SaidDone`. API keys are in the Keychain.
+- SaidDone reads another app's text field in two cases only: the selection you ask about, and the field it just typed into, for 20 seconds, to learn your corrections. **Learn from my corrections** turns the second off.
 
 ## Install
 
-### Download
+1. Download [SaidDone.dmg](https://github.com/Chaoqi31/saiddone/releases/latest/download/SaidDone.dmg) and drag **SaidDone** into **Applications**.
+2. Open it. The first time, macOS asks you to confirm an app from the internet; [INSTALL.md](INSTALL.md) shows how.
+3. Follow the Setup Assistant: permissions, engines, shortcuts, and a first dictation.
 
-**[⬇ Download SaidDone.dmg](https://github.com/Chaoqi31/saiddone/releases/latest/download/SaidDone.dmg)** (Apple Silicon · macOS 14+)
+SaidDone needs an Apple silicon Mac with macOS 14 or later.
 
-1. Open the DMG and drag **SaidDone** onto **Applications**.
-2. First launch is blocked by Gatekeeper (open-source builds are ad-hoc signed, not notarized). Allow it **once**:
-   - **macOS 14 (Sonoma):** right-click **SaidDone → Open → Open**.
-   - **macOS 15 (Sequoia):** double-click it, then **System Settings → Privacy & Security → "Open Anyway"**.
-   - Or in Terminal: `xattr -dr com.apple.quarantine /Applications/SaidDone.app`
-3. The **Setup Assistant** opens automatically — grants Microphone + Accessibility permissions, lets you pick local/cloud engines, and downloads models.
-
-See **[INSTALL.md](INSTALL.md)** for the full walkthrough.
-
-### Build from source
+## Build from source
 
 ```sh
 git clone https://github.com/Chaoqi31/saiddone && cd saiddone
-swift build && swift test     # build + run 100+ unit tests
-./scripts/install.sh          # build the app and install to /Applications
+scripts/test.sh          # run the tests
+scripts/install.sh       # build SaidDone.app and copy it to /Applications
 ```
 
-> [!IMPORTANT]
-> Requires **Xcode 26+ / Swift 6.2** on **Apple Silicon**. MLX-backed local models also need the Metal toolchain:
->
-> ```sh
-> xcodebuild -downloadComponent MetalToolchain
-> ```
+You need a Swift 6 toolchain: Xcode, or only the Command Line Tools. On-device AI runs on MLX, whose Metal shaders only Xcode compiles. `scripts/bundle.sh` uses Xcode when its Metal toolchain is installed:
 
-## Models and providers
+```sh
+xcodebuild -downloadComponent MetalToolchain
+```
 
-ASR and LLM are independent — pick local or cloud for each in **Settings → Providers**. Whatever you select is exactly what runs (no silent fallback).
-
-### Cloud (default, most reliable)
-
-Pick a provider and add its key in **Settings → Cloud** (stored in Keychain), then set the stage's location to **Cloud**. 11 built-in OpenAI-compatible providers ship in the picker (DeepSeek, OpenAI, Moonshot, Zhipu, SiliconFlow, Groq, Cerebras, xAI, OpenRouter, Ollama, LM Studio), and the Base URL/model fields stay editable for compatible endpoints.
-
-| Provider | Base URL | Example model |
-|---|---|---|
-| **DeepSeek** | `https://api.deepseek.com` | `deepseek-chat` |
-| **OpenAI** | `https://api.openai.com/v1` | `gpt-4o-mini` / `gpt-4o-transcribe` |
-| Any OpenAI-compatible | your endpoint | your model |
-
-### On-device (optional, offline, zero-key)
-
-| Stage | Engine | Notes |
-|---|---|---|
-| **Speech → text** | WhisperKit `large-v3-turbo` | Downloads once; runs fully offline after. Set your primary language for best zh-en mixing. |
-| **Polish / translate** | MLX **Qwen3** (`0.6B` / `1.7B` / `4B` / `8B` 4-bit, default **4B**) | Always an AI model, never plain rules. Bigger → better Chinese and structuring. |
-
-First all-local run downloads **~3.8 GB once** (Whisper turbo ~1.5 GB + Qwen3-4B ~2.3 GB). Models live in `~/Documents/huggingface/models/`. On-device models are smaller and can mishear technical terms or mixed-language speech more often than cloud — see [ADR-0007](docs/adr/0007-cloud-default-local-optional.md).
-
-> [!TIP]
-> On a mainland-China network, enable the **hf-mirror.com** mirror in the Setup Assistant if downloads stall.
+A build made with only the Command Line Tools runs everything except on-device AI, and says so in the app.
 
 ## How it works
 
 ```
-hotkey (toggle) → capture audio → trim silence → ASR → custom dictionary
-   → polish  ┃ Voice Input
-   → translate ┃ Translation        → insert at cursor (⌘V paste) → save to History
-   → ask       ┃ Ask Anything
+shortcut → record → trim silence → speech engine → remove hallucinated phrases → dictionary
+        → AI: polish (Voice Input), translate (Translation), or edit and answer (Ask Anything)
+        → paste at the cursor, or copy if you switched apps → History
 ```
 
-If a Mode's AI operation exceeds your **AI step timeout** (Settings → General, default 8 s), SaidDone shows a timeout instead of silently inserting stale text. With fast dictation enabled, the already-inserted ASR draft stays in place so your words are not lost.
-
-## Architecture
-
-Native Swift / SwiftUI, three targets:
+The code is three layers:
 
 | Target | Role |
 |---|---|
-| `SaidDoneCore` | Pipeline, dictionary, config, history — pure logic, heavily unit-tested |
-| `SaidDoneProviders` | ASR/LLM engines (WhisperKit, MLX, cloud) |
-| `SaidDoneApp` | Menu-bar shell: capture, hotkeys, insertion, UI |
+| `SaidDoneCore` | Pure logic with no dependencies: the shortcut recognizer, the recording and job state machine, prompts and reply parsing, the pipeline, the dictionary, history and settings types. |
+| `SaidDoneEngines` | Speech and AI engines behind two protocols: WhisperKit, MLX, OpenAI-compatible cloud APIs, and Volcengine. Also model downloads and audio encoding. |
+| `SaidDoneApp` | The menu-bar app: the keyboard tap, microphone, pasting, stores, and every window. |
 
-## Permissions
+`saiddone-cli` runs the real engines on an audio file, without the microphone or the app:
 
-| Permission | Why | If missing |
-|---|---|---|
-| **Microphone** | Record your voice | Can't capture audio |
-| **Accessibility** | Paste text at the cursor (synthesised ⌘V) | Text is transcribed and saved to History, but won't auto-insert |
+```sh
+swift run saiddone-cli download whisper
+SAIDDONE_KEY_DEEPSEEK=sk-... swift run saiddone-cli run memo.m4a --terms "Vercel,SaidDone"
+```
 
 ## Development
 
-```sh
-swift test                 # 100+ unit tests (core pipeline, providers, app-layer)
-./scripts/bundle.sh        # fast runnable SaidDone.app for day-to-day dev
-./scripts/bundle-xcode.sh  # full SaidDone.app with MLX metallib
-./scripts/release.sh       # build a shareable DMG
-./scripts/notarize.sh      # notarized DMG (needs an Apple Developer account)
-```
+| Command | What it does |
+|---|---|
+| `scripts/test.sh` | Runs the Swift Testing suite, including with only the Command Line Tools. |
+| `SAIDDONE_UI=1 scripts/test.sh --filter RenderTests` | Draws every screen in English and Chinese to `/tmp/saiddone-render`. |
+| `scripts/e2e.sh` | Speaks three sample sentences with macOS voices and runs them through the real engines. |
+| `scripts/bundle.sh [debug]` | Builds `dist/SaidDone.app`. |
+| `scripts/release.sh` | Builds `dist/SaidDone.dmg`, ad-hoc signed. |
+| `scripts/notarize.sh` | Builds a notarized DMG with a Developer ID. |
 
-**Releases:** push a version tag (`git tag v1.2.0 && git push origin v1.2.0`) — GitHub Actions builds `SaidDone.dmg` and attaches it to the Release automatically.
+To release, push a version tag, such as `git tag v2.0.0 && git push origin v2.0.0`. GitHub Actions builds the DMG and attaches it to the release.
 
-Contributions welcome — open an issue or PR.
+Issues and pull requests are welcome.
